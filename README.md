@@ -1,36 +1,46 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Airport Dock Tracker
 
-## Getting Started
+Created by Alex Gammell
 
-First, run the development server:
+## Overview
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
+Airport Dock Tracker is a real-time application designed to manage and monitor airport docks at Dallas/Fort Worth International Airport (DFW). This system provides an intuitive interface for tracking the status of docks in both the southeast and southwest locations of the airport.
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Features
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+- Real-time dock status updates
+- Separate tracking for southeast and southwest dock locations
+- User authentication system
+- Dark mode interface for improved visibility in various lighting conditions
+- Responsive design for use on various devices
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## How It Works
 
-## Learn More
+1. Users log in to the system using their credentials.
+2. The main interface displays a grid of docks, color-coded by their current status:
+   - Available (Green)
+   - Occupied (Yellow)
+   - Out of Service (Red)
+   - Deiced (Blue)
+3. Users can filter docks by status and switch between southeast and southwest locations.
+4. Dock statuses can be updated in real-time, with changes immediately reflected for all users.
+5. The system uses WebSockets to ensure all clients receive updates without needing to refresh the page.
 
-To learn more about Next.js, take a look at the following resources:
+## Technologies Used
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+### Frontend
+- Next.js: React framework for building the user interface
+- TypeScript: For type-safe JavaScript code
+- Tailwind CSS: For styling and responsive design
+- Lucide React: For icons
+- Socket.io-client: For real-time WebSocket connections
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+### Backend
+- Flask: Python web framework for the API
+- SQLAlchemy: ORM for database interactions
+- Flask-SocketIO: For WebSocket support in Flask
+- SQLite: As the database for storing dock information
 
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+### Development and Deployment
+- Git & GitHub: For version control and code hosting
+- DigitalOcean: For hosting the application
