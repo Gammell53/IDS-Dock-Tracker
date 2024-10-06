@@ -1,19 +1,8 @@
 'use client'
 
-import React, { useEffect, useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Card, CardContent } from "@/components/ui/card"
 import { PlaneLanding, Loader } from 'lucide-react'
-import { initializeApp } from 'firebase/app';
-import { getFunctions, httpsCallable } from 'firebase/functions';
-
-// Your web app's Firebase configuration
-const firebaseConfig = {
-  // Add your Firebase config here
-};
-
-// Initialize Firebase
-const app = initializeApp(firebaseConfig);
-const functions = getFunctions(app);
 
 interface Flight {
   icao24: string;
@@ -30,12 +19,28 @@ const FlightArrivals: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    const fetchFlights = httpsCallable(functions, 'getFlights');
-    fetchFlights().then((result) => {
-      setFlights(result.data);
-    }).catch((error) => {
-      console.error("Error fetching flights:", error);
-    });
+    const fetchFlights = async () => {
+      try {
+        setLoading(true);
+        const response = await fetch('/api/mock-flights');
+        if (!response.ok) {
+          throw new Error('Failed to fetch flights');
+        }
+        const data = await response.json();
+        setFlights(data);
+        setError(null);
+      } catch (error) {
+        console.error('Error fetching flights:', error);
+        setError('Failed to fetch flights. Please try again.');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchFlights();
+    const interval = setInterval(fetchFlights, 60000); // Fetch every minute
+
+    return () => clearInterval(interval);
   }, []);
 
   const formatArrivalTime = (utcTimeString: string) => {

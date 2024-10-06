@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useMemo, useRef } from 'react'
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { PlaneLanding, PlaneIcon, AlertTriangle, Snowflake, Loader, RefreshCw } from 'lucide-react'
 import io from 'socket.io-client'
 
@@ -24,6 +24,28 @@ export default function DockTracker() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const socketRef = useRef<typeof io.Socket | null>(null)
+
+  const fetchDocks = useCallback(async () => {
+    try {
+      setLoading(true)
+      const response = await fetch('/api/docks')
+      if (!response.ok) {
+        throw new Error('Failed to fetch docks')
+      }
+      const data = await response.json()
+      const formattedDocks = data.map((dock: Dock) => ({
+        ...dock,
+        name: getDockName(dock)
+      }))
+      setDocks(formattedDocks)
+      setError(null)
+    } catch (error) {
+      console.error('Error fetching docks:', error)
+      setError('Failed to fetch docks. Please try again.')
+    } finally {
+      setLoading(false)
+    }
+  }, [])  // Empty dependency array as it doesn't depend on any external variables
 
   useEffect(() => {
     const socketUrl = process.env.NODE_ENV === 'development' 
@@ -59,35 +81,13 @@ export default function DockTracker() {
         socketRef.current.disconnect()
       }
     }
-  }, [])
+  }, [fetchDocks])  // Add fetchDocks to the dependency array
 
   const getDockName = (dock: Dock) => {
     if (dock.location === 'southwest') {
       return southwestDockNames[dock.number - 1] || `Unknown SW Dock ${dock.number}`
     }
     return `Dock ${dock.number}`
-  }
-
-  const fetchDocks = async () => {
-    try {
-      setLoading(true)
-      const response = await fetch('/api/docks')
-      if (!response.ok) {
-        throw new Error('Failed to fetch docks')
-      }
-      const data = await response.json()
-      const formattedDocks = data.map((dock: Dock) => ({
-        ...dock,
-        name: getDockName(dock)
-      }))
-      setDocks(formattedDocks)
-      setError(null)
-    } catch (error) {
-      console.error('Error fetching docks:', error)
-      setError('Failed to fetch docks. Please try again.')
-    } finally {
-      setLoading(false)
-    }
   }
 
   const updateDockStatus = async (id: number, status: DockStatus) => {
