@@ -4,6 +4,7 @@
 REPO_DIR="/var/www/ids-dock-tracker"
 GITHUB_REPO="https://github.com/Gammell53/IDS-Dock-Tracker.git"
 BRANCH="main"
+VENV_DIR="$REPO_DIR/venv"
 
 # Navigate to the project directory
 cd $REPO_DIR
@@ -32,8 +33,19 @@ npm run build
 
 # Backend deployment
 echo "Deploying backend..."
-source venv/bin/activate
+if [ ! -d "$VENV_DIR" ]; then
+    echo "Creating virtual environment..."
+    python3 -m venv $VENV_DIR
+fi
+
+# Activate virtual environment
+source $VENV_DIR/bin/activate
+
+# Install or update Python dependencies
 pip install -r requirements.txt
+
+# Deactivate virtual environment
+deactivate
 
 # Restart the backend service
 echo "Restarting backend service..."
