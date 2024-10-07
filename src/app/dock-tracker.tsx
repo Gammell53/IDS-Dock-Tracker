@@ -19,74 +19,100 @@ const southwestDockNames = ['H84', 'H86', 'H87', 'H89', 'H90', 'H92', 'H93', 'H9
 
 export default function DockTracker() {
   const [docks, setDocks] = useState<Dock[]>([])
-  const [activeTab, setActiveTab] = useState<DockLocation>('southwest') // Changed this line
+  const [activeTab, setActiveTab] = useState<DockLocation>('southwest')
   const [statusFilter, setStatusFilter] = useState<DockStatus | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const socketRef = useRef<typeof io.Socket | null>(null)
 
+  console.log('DockTracker rendering, loading:', loading, 'docks:', docks);
+
   const fetchDocks = useCallback(async () => {
     try {
-      setLoading(true)
-      const response = await fetch('/api/docks')
+      setLoading(true);
+      console.log('Fetching docks...');
+      const token = localStorage.getItem('token');
+      const response = await fetch('/api/docks', {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      });
+      console.log('Fetch response:', response);
       if (!response.ok) {
-        throw new Error('Failed to fetch docks')
+        throw new Error(`Failed to fetch docks: ${response.status} ${response.statusText}`);
       }
-      const data = await response.json()
+      const data = await response.json();
+      console.log('Fetched data:', data);
+      if (data.length === 0) {
+        console.log('No docks returned from API');
+      }
       const formattedDocks = data.map((dock: Dock) => ({
         ...dock,
         name: getDockName(dock)
-      }))
-      setDocks(formattedDocks)
-      setError(null)
+      }));
+      console.log('Formatted docks:', formattedDocks);
+      setDocks(formattedDocks);
+      setError(null);
     } catch (error) {
-      console.error('Error fetching docks:', error)
-      setError('Failed to fetch docks. Please try again.')
+      console.error('Error fetching docks:', error);
+      setError('Failed to fetch docks. Please try again.');
     } finally {
-      setLoading(false)
+      setLoading(false);
+      console.log('Fetch completed, loading set to false');
     }
-  }, [])  // Empty dependency array as it doesn't depend on any external variables
+  }, []);
 
   useEffect(() => {
     const socketUrl = process.env.NODE_ENV === 'production'
-      ? 'wss://your-production-domain.com'  // Use WSS for secure WebSocket in production
-      : 'http://localhost:5000';
+      ? 'wss://your-production-domain.com/ws'
+      : 'ws://localhost:8000/ws';
     
-    const socket = io(socketUrl, {
-      transports: ['websocket'],
-      upgrade: false,
-      reconnection: true,
-      reconnectionAttempts: 5,
-      reconnectionDelay: 1000,
-    });
+    let socket: WebSocket;
 
-    socket.on('connect', () => {
-      console.log('Connected to WebSocket server')
-    });
+    const connectWebSocket = () => {
+      socket = new WebSocket(socketUrl);
 
-    socket.on('dock_updated', (updatedDock: Dock) => {
-      console.log('Received dock_updated event:', updatedDock)
-      setDocks(prevDocks => 
-        prevDocks.map(dock => 
-          dock.id === updatedDock.id ? {...updatedDock, name: getDockName(updatedDock)} : dock
-        )
-      )
-    });
+      socket.onopen = () => {
+        console.log('Connected to WebSocket server');
+        // Send a ping message every 30 seconds to keep the connection alive
+        const pingInterval = setInterval(() => {
+          if (socket.readyState === WebSocket.OPEN) {
+            socket.send(JSON.stringify({ type: 'ping' }));
+          }
+        }, 30000);
 
-    socket.on('disconnect', () => {
-      console.log('Disconnected from WebSocket server')
-    });
+        socket.onclose = (event) => {
+          console.log('WebSocket connection closed:', event.code, event.reason);
+          clearInterval(pingInterval);
+          setTimeout(connectWebSocket, 5000);
+        };
+      };
 
-    socket.on('error', (error: Error) => {
-      console.error('WebSocket error:', error)
-    });
+      socket.onmessage = (event) => {
+        const data = JSON.parse(event.data);
+        if (data.type === 'dock_updated') {
+          console.log('Received dock_updated event:', data.data);
+          setDocks(prevDocks => 
+            prevDocks.map(dock => 
+              dock.id === data.data.id ? {...data.data, name: getDockName(data.data)} : dock
+            )
+          );
+        }
+      };
+
+      socket.onerror = (error) => {
+        console.error('WebSocket error:', error);
+      };
+    };
+
+    connectWebSocket();
 
     return () => {
-      if (socketRef.current) {
-        socketRef.current.disconnect()
+      if (socket && socket.readyState === WebSocket.OPEN) {
+        socket.close();
       }
-    }
-  }, [fetchDocks])  // Add fetchDocks to the dependency array
+    };
+  }, []);
 
   const getDockName = (dock: Dock) => {
     if (dock.location === 'southwest') {
@@ -97,10 +123,12 @@ export default function DockTracker() {
 
   const updateDockStatus = async (id: number, status: DockStatus) => {
     try {
+      const token = localStorage.getItem('token');
       const response = await fetch(`/api/docks/${id}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
         },
         body: JSON.stringify({ status }),
       })
@@ -157,23 +185,49 @@ export default function DockTracker() {
     setStatusFilter(prevStatus => prevStatus === status ? null : status)
   }
 
-  if (loading) return (
-    <div className="flex justify-center items-center h-64">
-      <Loader className="animate-spin h-12 w-12 text-white" />
-    </div>
-  );
+  useEffect(() => {
+    fetchDocks();
+  }, [fetchDocks]);
 
-  if (error) return (
-    <div className="bg-white/90 backdrop-blur-sm shadow-lg rounded-lg p-6 text-center">
-      <p className="text-red-500 font-semibold text-xl mb-4">{error}</p>
-      <button 
-        onClick={fetchDocks} 
-        className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded inline-flex items-center transition-colors duration-200"
-      >
-        <RefreshCw className="mr-2 h-4 w-4" /> Retry
-      </button>
-    </div>
-  );
+  if (loading) {
+    console.log('Rendering loading state');
+    return (
+      <div className="flex justify-center items-center h-64">
+        <Loader className="animate-spin h-12 w-12 text-white" />
+        <p className="ml-2 text-white">Loading docks...</p>
+      </div>
+    );
+  }
+
+  if (error) {
+    console.log('Rendering error state');
+    return (
+      <div className="bg-white/90 backdrop-blur-sm shadow-lg rounded-lg p-6 text-center">
+        <p className="text-red-500 font-semibold text-xl mb-4">{error}</p>
+        <button 
+          onClick={fetchDocks} 
+          className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded inline-flex items-center transition-colors duration-200"
+        >
+          <RefreshCw className="mr-2 h-4 w-4" /> Retry
+        </button>
+      </div>
+    );
+  }
+
+  if (docks.length === 0) {
+    console.log('No docks found');
+    return (
+      <div className="bg-white/90 backdrop-blur-sm shadow-lg rounded-lg p-6 text-center">
+        <p className="text-yellow-500 font-semibold text-xl mb-4">No docks found.</p>
+        <button 
+          onClick={fetchDocks} 
+          className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded inline-flex items-center transition-colors duration-200"
+        >
+          <RefreshCw className="mr-2 h-4 w-4" /> Refresh
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6 bg-gray-900 text-white p-6 rounded-lg">

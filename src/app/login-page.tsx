@@ -18,11 +18,28 @@ const LoginPage: React.FC = () => {
     setLoading(true);
     setError('');
 
-    const success = await login(username, password);
-    if (success) {
-      router.push('/');
-    } else {
-      setError('Invalid username or password');
+    try {
+      const response = await fetch('/token', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: new URLSearchParams({
+          username: username,
+          password: password,
+        }),
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        await login(data.access_token);
+        router.push('/');
+      } else {
+        setError('Invalid username or password');
+      }
+    } catch (error) {
+      setError('An error occurred. Please try again.');
+    } finally {
       setLoading(false);
     }
   };

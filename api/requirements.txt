@@ -1,7 +1,6 @@
-flask
-gunicorn
-flask_sqlalchemy
-flask_cors
-flask_socketio
+aiohttp
+aiohttp_cors
+sqlalchemy[asyncio]
+aiosqlite
 pytz
 requests

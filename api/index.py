@@ -1,206 +1,144 @@
-from flask import Flask, request, jsonify
-from flask_sqlalchemy import SQLAlchemy
-from flask_cors import CORS
-from flask_socketio import SocketIO
-import eventlet
+from aiohttp import web
+from aiohttp_cors import setup as cors_setup, ResourceOptions
+from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
+from sqlalchemy.orm import sessionmaker, declarative_base
+from sqlalchemy import Column, Integer, String
+from sqlalchemy.future import select
+from sqlalchemy.exc import SQLAlchemyError
+import asyncio
+import logging
+import json
+from datetime import datetime, timedelta
+import pytz
+import random
 
-eventlet.monkey_patch()
-
-app = Flask(__name__)
-CORS(app)
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///docks.db'
-app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-db = SQLAlchemy(app)
-socketio = SocketIO(app, async_mode='eventlet', cors_allowed_origins="*")
+# Create Base for declarative models
+Base = declarative_base()
 
 # Define Dock model
-class Dock(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    location = db.Column(db.String(10), nullable=False)  # 'southeast' or 'southwest'
-    number = db.Column(db.Integer, nullable=False)
-    status = db.Column(db.String(20), nullable=False)
+class Dock(Base):
+    __tablename__ = 'docks'
+    id = Column(Integer, primary_key=True)
+    location = Column(String(10), nullable=False)  # 'southeast' or 'southwest'
+    number = Column(Integer, nullable=False)
+    status = Column(String(20), nullable=False)
 
-@app.route('/api/docks', methods=['GET'])
-def get_docks():
+# Create async engine and session
+engine = create_async_engine('sqlite+aiosqlite:///docks.db', echo=True)
+async_session = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+
+# Set up logging
+logging.basicConfig(level=logging.DEBUG)
+
+app = web.Application()
+cors = cors_setup(app, defaults={
+    "*": ResourceOptions(
+        allow_credentials=True,
+        expose_headers="*",
+        allow_headers="*",
+    )
+})
+
+# WebSocket connections store
+ws_connections = set()
+
+async def get_docks(request):
     logging.debug('GET /api/docks called')
     try:
-        logging.info('Fetching all docks')
-        docks = Dock.query.all()
-        result = [{'id': dock.id, 'location': dock.location, 'number': dock.number, 'status': dock.status} for dock in docks]
-        logging.info(f'Fetched {len(result)} docks')
-        return jsonify(result)
+        async with async_session() as session:
+            result = await session.execute(select(Dock))
+            docks = result.scalars().all()
+            dock_list = [{'id': dock.id, 'location': dock.location, 'number': dock.number, 'status': dock.status} for dock in docks]
+            logging.info(f'Fetched {len(dock_list)} docks')
+            return web.json_response(dock_list)
     except SQLAlchemyError as e:
         logging.error(f'Error fetching docks: {str(e)}')
-        db.session.rollback()
-        return jsonify({'error': str(e)}), 500
+        return web.json_response({'error': str(e)}, status=500)
 
-@app.route('/api/docks/<int:dock_id>', methods=['PUT'])
-def update_dock(dock_id):
+async def update_dock(request):
+    dock_id = int(request.match_info['dock_id'])
     try:
+        data = await request.json()
         logging.info(f'Updating dock {dock_id}')
-        dock = Dock.query.get_or_404(dock_id)
-        data = request.json
+        
         if 'status' not in data:
-            return jsonify({'error': 'Status is required'}), 400
+            return web.json_response({'error': 'Status is required'}, status=400)
         if data['status'] not in ['available', 'occupied', 'out-of-service', 'deiced']:
-            return jsonify({'error': 'Invalid status'}), 400
-        dock.status = data['status']
-        db.session.commit()
-        logging.info(f'Updated dock {dock_id} to status {dock.status}')
+            return web.json_response({'error': 'Invalid status'}, status=400)
         
-        # Emit a WebSocket event to all clients
-        socketio.emit('dock_updated', {'id': dock.id, 'location': dock.location, 'number': dock.number, 'status': dock.status})
-        
-        return jsonify({'id': dock.id, 'location': dock.location, 'number': dock.number, 'status': dock.status})
+        async with async_session() as session:
+            result = await session.execute(select(Dock).filter_by(id=dock_id))
+            dock = result.scalar_one_or_none()
+            
+            if not dock:
+                return web.json_response({'error': 'Dock not found'}, status=404)
+            
+            dock.status = data['status']
+            await session.commit()
+            
+            logging.info(f'Updated dock {dock_id} to status {dock.status}')
+            
+            # Broadcast update to all connected WebSocket clients
+            update_message = json.dumps({
+                'type': 'dock_updated',
+                'data': {'id': dock.id, 'location': dock.location, 'number': dock.number, 'status': dock.status}
+            })
+            for ws in ws_connections:
+                await ws.send_str(update_message)
+            
+            return web.json_response({'id': dock.id, 'location': dock.location, 'number': dock.number, 'status': dock.status})
     except SQLAlchemyError as e:
         logging.error(f'Error updating dock {dock_id}: {str(e)}')
-        db.session.rollback()
-        return jsonify({'error': str(e)}), 500
+        return web.json_response({'error': str(e)}, status=500)
     except Exception as e:
         logging.error(f'Unexpected error updating dock {dock_id}: {str(e)}')
-        db.session.rollback()
-        return jsonify({'error': 'An unexpected error occurred'}), 500
+        return web.json_response({'error': 'An unexpected error occurred'}, status=500)
 
-@app.route('/api/test', methods=['GET'])
-def test_route():
-    return jsonify({"message": "API is working"}), 200
-
-@app.route('/api/flights', methods=['GET'])
-def get_flights():
-    logging.debug('GET /api/flights called')
+async def websocket_handler(request):
+    ws = web.WebSocketResponse()
+    await ws.prepare(request)
+    
+    ws_connections.add(ws)
+    
     try:
-        # Set up Dallas time zone
-        dallas_tz = pytz.timezone('America/Chicago')
-        dallas_now = datetime.now(dallas_tz)
+        async for msg in ws:
+            if msg.type == web.WSMsgType.TEXT:
+                # Handle incoming WebSocket messages if needed
+                pass
+            elif msg.type == web.WSMsgType.ERROR:
+                logging.error(f'WebSocket connection closed with exception {ws.exception()}')
+    finally:
+        ws_connections.remove(ws)
+    
+    return ws
 
-        # Make a request to AviationStack API
-        url = 'http://api.aviationstack.com/v1/flights'
-        params = {
-            'access_key': '81817636f3c6b7bf65aed6183fb1aa5f',
-            'flight_status': 'scheduled',
-            'arr_iata': 'DFW',  # IATA code for Dallas/Fort Worth International Airport
-            'limit': 100  # Fetch up to 100 flights
-        }
-        
-        logging.debug(f"Requesting AviationStack API with params: {params}")
-        response = requests.get(url, params=params)
-        logging.debug(f"AviationStack API response status: {response.status_code}")
-        
-        if response.status_code != 200:
-            logging.error(f"AviationStack API error: {response.text}")
-            raise Exception(f"AviationStack API error: {response.status_code}")
-        
-        data = response.json()
-        
-        if 'error' in data:
-            logging.error(f"AviationStack API error: {data['error']['message']}")
-            raise Exception(f"AviationStack API error: {data['error']['message']}")
-        
-        flights = data.get('data', [])
-        logging.debug(f"Received {len(flights)} flights from API")
-        
-        formatted_flights = []
-        
-        for flight in flights:
-            logging.debug(f"Processing flight: {flight}")
-            try:
-                arrival = flight.get('arrival', {})
-                departure = flight.get('departure', {})
-                aircraft = flight.get('aircraft', {})
-                flight_info = flight.get('flight', {})
-                
-                arrival_time = arrival.get('estimated') or arrival.get('scheduled')
-                if arrival_time:
-                    # Convert arrival time to Dallas time
-                    arrival_datetime = datetime.fromisoformat(arrival_time.replace('Z', '+00:00')).astimezone(dallas_tz)
-                    logging.debug(f"Flight arrival time (Dallas): {arrival_datetime}")
-                    
-                    time_until_arrival = max(0, (arrival_datetime - dallas_now).total_seconds() / 60)  # in minutes
-                    formatted_flight = {
-                        'icao24': aircraft.get('icao24', 'N/A') if aircraft else 'N/A',
-                        'callsign': flight_info.get('iata', 'N/A'),
-                        'estDepartureAirport': departure.get('iata', 'N/A'),
-                        'estimatedArrivalTime': arrival_datetime.isoformat(),
-                        'minutesUntilArrival': int(time_until_arrival),
-                        'arrivalAirport': 'DFW'
-                    }
-                    formatted_flights.append(formatted_flight)
-                    logging.debug(f"Formatted flight: {formatted_flight}")
-                else:
-                    logging.warning(f"No arrival time found for flight: {flight}")
-            except Exception as e:
-                logging.error(f"Error formatting flight: {e}", exc_info=True)
-                continue
-        
-        # Sort by estimated arrival time
-        formatted_flights.sort(key=lambda x: x['estimatedArrivalTime'])
-        
-        logging.info(f'Fetched and sorted {len(formatted_flights)} flights')
-        return jsonify(formatted_flights)
-    except Exception as e:
-        logging.error(f'Error fetching flights: {str(e)}', exc_info=True)
-        return jsonify({'error': str(e)}), 500
+# Initialize database
+async def init_db():
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    
+    async with async_session() as session:
+        # Check if docks already exist
+        result = await session.execute(select(Dock))
+        if result.scalars().first() is None:
+            # Initialize docks
+            southeast_docks = [Dock(location='southeast', number=i, status='available') for i in range(1, 14)]
+            southwest_dock_names = ['H84', 'H86', 'H87', 'H89', 'H90', 'H92', 'H93', 'H95', 'H96', 'H98', 'H99']
+            southwest_docks = [Dock(location='southwest', number=i, status='available') for i, name in enumerate(southwest_dock_names, start=1)]
+            
+            session.add_all(southeast_docks + southwest_docks)
+            await session.commit()
+            logging.info("Docks initialized.")
+        else:
+            logging.info("Docks already exist in the database.")
 
-@app.route('/api/mock-flights', methods=['GET'])
-def get_mock_flights():
-    logging.debug('GET /api/mock-flights called')
-    try:
-        # Set up Dallas time zone
-        dallas_tz = pytz.timezone('America/Chicago')
-        dallas_now = datetime.now(dallas_tz)
-
-        # Generate mock flights
-        mock_flights = []
-        for i in range(20):  # Generate 20 mock flights
-            arrival_time = dallas_now + timedelta(minutes=random.randint(30, 300))
-            mock_flight = {
-                'icao24': f'ABC{random.randint(100, 999)}',
-                'callsign': f'FL{random.randint(1000, 9999)}',
-                'estDepartureAirport': random.choice(['LAX', 'JFK', 'ORD', 'ATL', 'SFO']),
-                'estimatedArrivalTime': arrival_time.isoformat(),
-                'minutesUntilArrival': int((arrival_time - dallas_now).total_seconds() / 60),
-                'arrivalAirport': 'DFW'
-            }
-            mock_flights.append(mock_flight)
-
-        # Sort by estimated arrival time
-        mock_flights.sort(key=lambda x: x['estimatedArrivalTime'])
-
-        logging.info(f'Generated {len(mock_flights)} mock flights')
-        return jsonify(mock_flights)
-    except Exception as e:
-        logging.error(f'Error generating mock flights: {str(e)}', exc_info=True)
-        return jsonify({'error': str(e)}), 500
-
-southwest_dock_names = ['H84', 'H86', 'H87', 'H89', 'H90', 'H92', 'H93', 'H95', 'H96', 'H98', 'H99']
-
-with app.app_context():
-    db.create_all()
-    logging.info("Database tables created.")
-    # Initialize docks if they don't exist
-    if Dock.query.count() == 0:
-        logging.info("Initializing docks...")
-        for i in range(1, 14):  # 13 docks for southeast
-            db.session.add(Dock(location='southeast', number=i, status='available'))
-        for i, name in enumerate(southwest_dock_names, start=1):  # 11 docks for southwest
-            db.session.add(Dock(location='southwest', number=i, status='available'))
-        db.session.commit()
-        logging.info("Docks initialized.")
-    else:
-        logging.info(f"Found {Dock.query.count()} existing docks.")
-
-# Add this after the initialization block
-with app.app_context():
-    southeast_count = Dock.query.filter_by(location='southeast').count()
-    southwest_count = Dock.query.filter_by(location='southwest').count()
-    if southeast_count != 13 or southwest_count != 11:
-        logging.warning(f"Unexpected dock count: Southeast: {southeast_count}, Southwest: {southwest_count}")
-        # Optionally, you could reinitialize the docks here if the counts are incorrect
-
-# Vercel requires a handler function
-def handler(event, context):
-    logging.debug(f'Handler called with event: {event}')
-    return app.wsgi_app(event['httpMethod'], event['path'], event['headers'], event['body'])
+app.add_routes([
+    web.get('/api/docks', get_docks),
+    web.put('/api/docks/{dock_id}', update_dock),
+    web.get('/ws', websocket_handler),
+    # ... (add other routes)
+])
 
 if __name__ == '__main__':
-    socketio.run(app, debug=False, host='0.0.0.0', port=5000)
+    asyncio.run(init_db())
+    web.run_app(app, host='0.0.0.0', port=5000)

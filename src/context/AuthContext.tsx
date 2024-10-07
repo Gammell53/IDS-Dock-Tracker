@@ -4,7 +4,7 @@ import React, { createContext, useContext, useState, useEffect } from 'react';
 
 interface AuthContextType {
   isAuthenticated: boolean;
-  login: (username: string, password: string) => Promise<boolean>;
+  login: (token: string) => Promise<void>;
   logout: () => void;
 }
 
@@ -14,24 +14,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [isAuthenticated, setIsAuthenticated] = useState(false);
 
   useEffect(() => {
-    // Check if user is authenticated on initial load
-    const token = localStorage.getItem('authToken');
-    setIsAuthenticated(!!token);
+    const token = localStorage.getItem('token');
+    if (token) {
+      setIsAuthenticated(true);
+    }
   }, []);
 
-  const login = async (username: string, password: string): Promise<boolean> => {
-    // Implement your login logic here
-    // For now, we'll just simulate a successful login
-    if (username === 'admin' && password === 'password') {
-      localStorage.setItem('authToken', 'dummy-token');
-      setIsAuthenticated(true);
-      return true;
-    }
-    return false;
+  const login = async (token: string) => {
+    localStorage.setItem('token', token);
+    setIsAuthenticated(true);
   };
 
   const logout = () => {
-    localStorage.removeItem('authToken');
+    localStorage.removeItem('token');
     setIsAuthenticated(false);
   };
 
