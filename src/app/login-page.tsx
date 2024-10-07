@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import { Loader, Lock } from 'lucide-react';
 
-const LoginPage: React.FC = () => {
+function LoginPage() {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -118,6 +118,6 @@ const LoginPage: React.FC = () => {
       </div>
     </div>
   );
-};
+}
 
 export default LoginPage;
