@@ -8,8 +8,18 @@ BRANCH="main"
 # Navigate to the project directory
 cd $REPO_DIR
 
+# Stash local changes
+git stash
+
 # Pull the latest code from GitHub
 git pull origin $BRANCH
+
+# Apply stashed changes (if any)
+git stash pop
+
+# Remove any .pyc files and __pycache__ directories
+find . -type f -name "*.pyc" -delete
+find . -type d -name "__pycache__" -exec rm -r {} +
 
 # Frontend deployment
 echo "Deploying frontend..."
