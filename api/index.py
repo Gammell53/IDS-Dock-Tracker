@@ -1,24 +1,17 @@
 from flask import Flask, request, jsonify
 from flask_sqlalchemy import SQLAlchemy
 from flask_cors import CORS
-from flask_socketio import SocketIO, emit
-import os
-from sqlalchemy.exc import SQLAlchemyError
-import logging
-import requests
-import time
-from datetime import datetime, timedelta, timezone
-import pytz
-import random
+from flask_socketio import SocketIO
+import eventlet
 
-logging.basicConfig(level=logging.DEBUG)
+eventlet.monkey_patch()
 
 app = Flask(__name__)
-CORS(app)  # Enable CORS for all routes
+CORS(app)
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///docks.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 db = SQLAlchemy(app)
-socketio = SocketIO(app, cors_allowed_origins=["http://localhost:3000", "http://frontend:3000"], async_mode='threading')
+socketio = SocketIO(app, async_mode='eventlet', cors_allowed_origins="*")
 
 # Define Dock model
 class Dock(db.Model):
@@ -210,4 +203,4 @@ def handler(event, context):
     return app.wsgi_app(event['httpMethod'], event['path'], event['headers'], event['body'])
 
 if __name__ == '__main__':
-    socketio.run(app, debug=True, port=5000)
+    socketio.run(app, debug=False, host='0.0.0.0', port=5000)

@@ -48,33 +48,38 @@ export default function DockTracker() {
   }, [])  // Empty dependency array as it doesn't depend on any external variables
 
   useEffect(() => {
-    const socketUrl = process.env.NODE_ENV === 'development' 
-      ? 'http://localhost:5000' 
-      : '/';
-    socketRef.current = io(socketUrl)
+    const socketUrl = process.env.NODE_ENV === 'production'
+      ? 'wss://your-production-domain.com'  // Use WSS for secure WebSocket in production
+      : 'http://localhost:5000';
+    
+    const socket = io(socketUrl, {
+      transports: ['websocket'],
+      upgrade: false,
+      reconnection: true,
+      reconnectionAttempts: 5,
+      reconnectionDelay: 1000,
+    });
 
-    fetchDocks()
-
-    socketRef.current.on('connect', () => {
+    socket.on('connect', () => {
       console.log('Connected to WebSocket server')
-    })
+    });
 
-    socketRef.current.on('dock_updated', (updatedDock: Dock) => {
+    socket.on('dock_updated', (updatedDock: Dock) => {
       console.log('Received dock_updated event:', updatedDock)
       setDocks(prevDocks => 
         prevDocks.map(dock => 
           dock.id === updatedDock.id ? {...updatedDock, name: getDockName(updatedDock)} : dock
         )
       )
-    })
+    });
 
-    socketRef.current.on('disconnect', () => {
+    socket.on('disconnect', () => {
       console.log('Disconnected from WebSocket server')
-    })
+    });
 
-    socketRef.current.on('error', (error: Error) => {
+    socket.on('error', (error: Error) => {
       console.error('WebSocket error:', error)
-    })
+    });
 
     return () => {
       if (socketRef.current) {
