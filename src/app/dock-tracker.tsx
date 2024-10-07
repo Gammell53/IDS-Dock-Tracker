@@ -61,9 +61,7 @@ export default function DockTracker() {
   }, []);
 
   useEffect(() => {
-    const socketUrl = process.env.NODE_ENV === 'production'
-      ? 'wss://your-production-domain.com/ws'
-      : 'ws://localhost:8000/ws';
+    const socketUrl = process.env.NEXT_PUBLIC_WS_URL || 'ws://localhost:8000/ws';
     
     let socket: WebSocket;
 

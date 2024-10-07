@@ -20,14 +20,25 @@ ssh $REMOTE_USER@$REMOTE_HOST << EOF
         git checkout $BRANCH
     fi
 
-    # Install or update dependencies
+    # Create virtual environment if it doesn't exist
+    if [ ! -d "venv" ]; then
+        python3 -m venv venv
+    fi
+
+    # Activate virtual environment
+    source venv/bin/activate
+
+    # Install or update Python dependencies
+    pip install -r requirements.txt
+
+    # Install or update Node.js dependencies
     npm install
 
     # Build the Next.js app
     npm run build
 
-    # Install or update Python dependencies
-    pip install -r requirements.txt
+    # Deactivate virtual environment
+    deactivate
 
     # Restart the FastAPI service
     sudo systemctl restart ids-dock-tracker
