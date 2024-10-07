@@ -14,17 +14,19 @@ echo "Removing __pycache__ directories and .pyc files..."
 find . -type d -name "__pycache__" -exec rm -rf {} +
 find . -type f -name "*.pyc" -delete
 
-# Stash local changes
-git stash
-
 # Fetch the latest code from GitHub
 git fetch origin $BRANCH
 
-# Reset to the latest commit on the remote branch
-git reset --hard origin/$BRANCH
-
-# Apply stashed changes (if any)
-git stash pop
+# Check for conflicts
+if git merge-base --is-ancestor HEAD origin/$BRANCH; then
+    echo "Fast-forward possible. Pulling changes..."
+    git merge origin/$BRANCH
+else
+    echo "Fast-forward not possible. Stashing changes, pulling, and then applying stash..."
+    git stash
+    git merge origin/$BRANCH
+    git stash pop
+fi
 
 # Frontend deployment
 echo "Deploying frontend..."
