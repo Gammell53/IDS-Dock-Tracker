@@ -64,12 +64,15 @@ export default function DockTracker() {
     const socketUrl = process.env.NEXT_PUBLIC_WS_URL || 'wss://idsdock.com/ws';
     
     let socket: WebSocket;
+    let reconnectTimer: NodeJS.Timeout;
 
     const connectWebSocket = () => {
       socket = new WebSocket(socketUrl);
 
       socket.onopen = () => {
         console.log('Connected to WebSocket server');
+        if (reconnectTimer) clearTimeout(reconnectTimer);
+        
         // Send a ping message every 30 seconds to keep the connection alive
         const pingInterval = setInterval(() => {
           if (socket.readyState === WebSocket.OPEN) {
@@ -80,7 +83,7 @@ export default function DockTracker() {
         socket.onclose = (event) => {
           console.log('WebSocket connection closed:', event.code, event.reason);
           clearInterval(pingInterval);
-          setTimeout(connectWebSocket, 5000);
+          reconnectTimer = setTimeout(connectWebSocket, 5000);
         };
       };
 
@@ -107,6 +110,7 @@ export default function DockTracker() {
       if (socket && socket.readyState === WebSocket.OPEN) {
         socket.close();
       }
+      if (reconnectTimer) clearTimeout(reconnectTimer);
     };
   }, []);
 
@@ -134,10 +138,7 @@ export default function DockTracker() {
         throw new Error(`Failed to update dock status: ${response.status} ${response.statusText}. ${JSON.stringify(errorData)}`)
       }
 
-      const updatedDock = await response.json()
-      console.log(`Updated dock ${id} to status ${updatedDock.status}`)
-
-      // We don't need to update the local state here anymore,
+      // We don't update the local state here anymore,
       // as the WebSocket will handle the update for all clients
     } catch (error) {
       console.error('Error updating dock status:', error)
