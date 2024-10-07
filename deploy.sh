@@ -14,18 +14,26 @@ echo "Removing __pycache__ directories and .pyc files..."
 find . -type d -name "__pycache__" -exec rm -rf {} +
 find . -type f -name "*.pyc" -delete
 
+# Check for uncommitted changes
+if [[ $(git status --porcelain) ]]; then
+    echo "There are uncommitted changes. Please commit or stash them before deploying."
+    exit 1
+fi
+
 # Fetch the latest code from GitHub
 git fetch origin $BRANCH
 
-# Check for conflicts
-if git merge-base --is-ancestor HEAD origin/$BRANCH; then
-    echo "Fast-forward possible. Pulling changes..."
-    git merge origin/$BRANCH
+# Check if we're behind the remote
+if [[ $(git rev-list HEAD..origin/$BRANCH --count) -ne 0 ]]; then
+    echo "Local branch is behind remote. Attempting to merge..."
+    if git merge origin/$BRANCH; then
+        echo "Merge successful."
+    else
+        echo "Merge failed. Please resolve conflicts manually and try again."
+        exit 1
+    fi
 else
-    echo "Fast-forward not possible. Stashing changes, pulling, and then applying stash..."
-    git stash
-    git merge origin/$BRANCH
-    git stash pop
+    echo "Local branch is up to date."
 fi
 
 # Frontend deployment
@@ -40,14 +48,8 @@ if [ ! -d "$VENV_DIR" ]; then
     python3 -m venv $VENV_DIR
 fi
 
-# Activate virtual environment
-source $VENV_DIR/bin/activate
-
-# Install or update Python dependencies
-pip install -r requirements.txt
-
-# Deactivate virtual environment
-deactivate
+# Use the virtual environment's pip directly
+$VENV_DIR/bin/pip install -r requirements.txt
 
 # Restart the backend service
 echo "Restarting backend service..."

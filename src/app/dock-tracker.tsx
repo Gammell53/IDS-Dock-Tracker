@@ -61,70 +61,27 @@ export default function DockTracker() {
   }, []);
 
   useEffect(() => {
-    const socketUrl = process.env.NEXT_PUBLIC_WS_URL || 'wss://idsdock.com/ws';
-    
-    let socket: WebSocket;
-    let reconnectTimer: NodeJS.Timeout;
+    const eventSource = new EventSource('/sse');
 
-    const connectWebSocket = () => {
-      socket = new WebSocket(socketUrl);
-
-      socket.onopen = () => {
-        console.log('Connected to WebSocket server');
-        if (reconnectTimer) clearTimeout(reconnectTimer);
-        
-        // Send a ping message every 30 seconds to keep the connection alive
-        const pingInterval = setInterval(() => {
-          if (socket.readyState === WebSocket.OPEN) {
-            socket.send(JSON.stringify({ type: 'ping' }));
-          } else {
-            clearInterval(pingInterval);
-            reconnectWebSocket();
-          }
-        }, 30000);
-
-        // Request a full state sync upon connection
-        socket.send(JSON.stringify({ type: 'request_full_sync' }));
-      };
-
-      socket.onclose = (event) => {
-        console.log('WebSocket connection closed:', event.code, event.reason);
-        reconnectWebSocket();
-      };
-
-      socket.onmessage = (event) => {
-        const data = JSON.parse(event.data);
-        if (data.type === 'dock_updated') {
-          console.log('Received dock_updated event:', data.data);
-          setDocks(prevDocks => 
-            prevDocks.map(dock => 
-              dock.id === data.data.id ? {...data.data, name: getDockName(data.data)} : dock
-            )
-          );
-        } else if (data.type === 'full_sync') {
-          console.log('Received full sync data:', data.docks);
-          setDocks(data.docks.map((dock: Dock) => ({...dock, name: getDockName(dock)})));
-        }
-      };
-
-      socket.onerror = (error) => {
-        console.error('WebSocket error:', error);
-        reconnectWebSocket();
-      };
+    eventSource.onmessage = (event) => {
+      const data = JSON.parse(event.data);
+      if (data.type === 'dock_updated') {
+        console.log('Received dock_updated event:', data.data);
+        setDocks(prevDocks => 
+          prevDocks.map(dock => 
+            dock.id === data.data.id ? {...data.data, name: getDockName(data.data)} : dock
+          )
+        );
+      }
     };
 
-    const reconnectWebSocket = () => {
-      if (reconnectTimer) clearTimeout(reconnectTimer);
-      reconnectTimer = setTimeout(connectWebSocket, 5000);
+    eventSource.onerror = (error) => {
+      console.error('SSE error:', error);
+      eventSource.close();
     };
-
-    connectWebSocket();
 
     return () => {
-      if (socket && socket.readyState === WebSocket.OPEN) {
-        socket.close();
-      }
-      if (reconnectTimer) clearTimeout(reconnectTimer);
+      eventSource.close();
     };
   }, []);
 

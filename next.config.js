@@ -12,6 +12,10 @@ const nextConfig = {
         source: '/token',
         destination: `${apiUrl}/token`,
       },
+      {
+        source: '/sse',
+        destination: `${apiUrl}/sse`,
+      },
     ]
   },
   env: {

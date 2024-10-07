@@ -1,7 +1,7 @@
-from fastapi import FastAPI, WebSocket, HTTPException, Depends, status, WebSocketDisconnect
+from fastapi import FastAPI, WebSocket, HTTPException, Depends, status, WebSocketDisconnect, Request
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from sqlalchemy import create_engine, Column, Integer, String
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, Session
@@ -15,6 +15,7 @@ from passlib.context import CryptContext
 from datetime import datetime, timedelta
 import os
 from dotenv import load_dotenv
+from sse_starlette.sse import EventSourceResponse
 
 # Load environment variables
 load_dotenv()
@@ -164,6 +165,23 @@ class ConnectionManager:
 
 manager = ConnectionManager()
 
+# Add this new class for SSE connections
+class SSEManager:
+    def __init__(self):
+        self.active_connections = set()
+
+    async def connect(self, client):
+        self.active_connections.add(client)
+
+    def disconnect(self, client):
+        self.active_connections.remove(client)
+
+    async def broadcast(self, message: str):
+        for client in self.active_connections:
+            await client.send(message)
+
+sse_manager = SSEManager()
+
 # Routes
 @app.post("/token", response_model=Token)
 async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends()):
@@ -201,8 +219,7 @@ async def update_dock(dock_id: int, dock_update: DockUpdate, db: Session = Depen
     db.commit()
     db.refresh(db_dock)
 
-    # Broadcast update to all connected WebSocket clients
-    await manager.broadcast(json.dumps({
+    update_message = json.dumps({
         "type": "dock_updated",
         "data": {
             "id": db_dock.id,
@@ -210,9 +227,31 @@ async def update_dock(dock_id: int, dock_update: DockUpdate, db: Session = Depen
             "number": db_dock.number,
             "status": db_dock.status
         }
-    }))
+    })
+
+    # Broadcast update to all connected WebSocket clients
+    await manager.broadcast(update_message)
+
+    # Broadcast update to all connected SSE clients
+    await sse_manager.broadcast(update_message)
 
     return db_dock
+
+@app.get('/sse')
+async def sse(request: Request):
+    async def event_generator():
+        client = asyncio.Queue()
+        await sse_manager.connect(client)
+        try:
+            while True:
+                if await request.is_disconnected():
+                    break
+                message = await client.get()
+                yield message
+        finally:
+            await sse_manager.disconnect(client)
+
+    return EventSourceResponse(event_generator())
 
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
