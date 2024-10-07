@@ -2,7 +2,7 @@
 
 # Configuration
 REPO_DIR="/var/www/ids-dock-tracker"
-GITHUB_REPO="https://github.com/your-username/your-repo-name.git"
+GITHUB_REPO="https://github.com/Gammell53/IDS-Dock-Tracker.git"
 BRANCH="main"
 
 # Navigate to the project directory
@@ -23,11 +23,11 @@ pip install -r requirements.txt
 
 # Restart the backend service
 echo "Restarting backend service..."
-sudo systemctl restart ids-dock-api
+sudo systemctl restart ids-dock-tracker
 
 # Restart the frontend service (assuming you're using PM2 for the frontend)
 echo "Restarting frontend service..."
-pm2 restart ids-dock-tracker
+pm2 restart next-app
 
 # Restart Nginx
 echo "Restarting Nginx..."
