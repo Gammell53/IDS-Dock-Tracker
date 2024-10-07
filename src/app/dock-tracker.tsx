@@ -77,14 +77,19 @@ export default function DockTracker() {
         const pingInterval = setInterval(() => {
           if (socket.readyState === WebSocket.OPEN) {
             socket.send(JSON.stringify({ type: 'ping' }));
+          } else {
+            clearInterval(pingInterval);
+            reconnectWebSocket();
           }
         }, 30000);
 
-        socket.onclose = (event) => {
-          console.log('WebSocket connection closed:', event.code, event.reason);
-          clearInterval(pingInterval);
-          reconnectTimer = setTimeout(connectWebSocket, 5000);
-        };
+        // Request a full state sync upon connection
+        socket.send(JSON.stringify({ type: 'request_full_sync' }));
+      };
+
+      socket.onclose = (event) => {
+        console.log('WebSocket connection closed:', event.code, event.reason);
+        reconnectWebSocket();
       };
 
       socket.onmessage = (event) => {
@@ -96,12 +101,21 @@ export default function DockTracker() {
               dock.id === data.data.id ? {...data.data, name: getDockName(data.data)} : dock
             )
           );
+        } else if (data.type === 'full_sync') {
+          console.log('Received full sync data:', data.docks);
+          setDocks(data.docks.map((dock: Dock) => ({...dock, name: getDockName(dock)})));
         }
       };
 
       socket.onerror = (error) => {
         console.error('WebSocket error:', error);
+        reconnectWebSocket();
       };
+    };
+
+    const reconnectWebSocket = () => {
+      if (reconnectTimer) clearTimeout(reconnectTimer);
+      reconnectTimer = setTimeout(connectWebSocket, 5000);
     };
 
     connectWebSocket();
@@ -124,6 +138,14 @@ export default function DockTracker() {
   const updateDockStatus = async (id: number, status: DockStatus) => {
     try {
       const token = localStorage.getItem('token');
+      
+      // Optimistic update
+      setDocks(prevDocks => 
+        prevDocks.map(dock => 
+          dock.id === id ? {...dock, status} : dock
+        )
+      );
+
       const response = await fetch(`/api/docks/${id}`, {
         method: 'PUT',
         headers: {
@@ -138,11 +160,10 @@ export default function DockTracker() {
         throw new Error(`Failed to update dock status: ${response.status} ${response.statusText}. ${JSON.stringify(errorData)}`)
       }
 
-      // We don't update the local state here anymore,
-      // as the WebSocket will handle the update for all clients
+      // The WebSocket will handle the confirmed update for all clients
     } catch (error) {
       console.error('Error updating dock status:', error)
-      // Revert the local state change
+      // Revert the optimistic update
       fetchDocks()
     }
   }

@@ -155,6 +155,13 @@ class ConnectionManager:
         for connection in self.active_connections:
             await connection.send_text(message)
 
+    async def send_full_sync(self, websocket: WebSocket):
+        docks = db.query(Dock).all()
+        await websocket.send_json({
+            "type": "full_sync",
+            "docks": [dock.__dict__ for dock in docks]
+        })
+
 manager = ConnectionManager()
 
 # Routes
@@ -210,23 +217,16 @@ async def update_dock(dock_id: int, dock_update: DockUpdate, db: Session = Depen
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
     await manager.connect(websocket)
-    logger.info(f"New WebSocket connection: {websocket.client}")
     try:
         while True:
             data = await websocket.receive_text()
-            logger.info(f"Received WebSocket message: {data}")
-            try:
-                json_data = json.loads(data)
-                if json_data.get('type') == 'ping':
-                    await websocket.send_text(json.dumps({'type': 'pong'}))
-                    logger.info("Sent pong response")
-            except json.JSONDecodeError:
-                logger.warning(f"Received invalid JSON: {data}")
-    except Exception as e:
-        logger.error(f"WebSocket error: {str(e)}")
-    finally:
+            message = json.loads(data)
+            if message["type"] == "ping":
+                await websocket.send_json({"type": "pong"})
+            elif message["type"] == "request_full_sync":
+                await manager.send_full_sync(websocket)
+    except WebSocketDisconnect:
         manager.disconnect(websocket)
-        logger.info(f"WebSocket connection closed: {websocket.client}")
 
 # Initialize database
 def init_db():
