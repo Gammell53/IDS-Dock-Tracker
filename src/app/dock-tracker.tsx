@@ -61,12 +61,18 @@ export default function DockTracker() {
   }, []);
 
   useEffect(() => {
+    console.log('Setting up SSE connection');
     const eventSource = new EventSource('/sse');
 
+    eventSource.onopen = () => {
+      console.log('SSE connection opened');
+    };
+
     eventSource.onmessage = (event) => {
+      console.log('Received SSE message:', event.data);
       const data = JSON.parse(event.data);
       if (data.type === 'dock_updated') {
-        console.log('Received dock_updated event:', data.data);
+        console.log('Processing dock_updated event:', data.data);
         setDocks(prevDocks => 
           prevDocks.map(dock => 
             dock.id === data.data.id ? {...data.data, name: getDockName(data.data)} : dock
@@ -81,6 +87,7 @@ export default function DockTracker() {
     };
 
     return () => {
+      console.log('Closing SSE connection');
       eventSource.close();
     };
   }, []);
@@ -94,6 +101,7 @@ export default function DockTracker() {
 
   const updateDockStatus = async (id: number, status: DockStatus) => {
     try {
+      console.log(`Updating dock ${id} to status ${status}`);
       const token = localStorage.getItem('token');
       
       // Optimistic update
@@ -117,7 +125,7 @@ export default function DockTracker() {
         throw new Error(`Failed to update dock status: ${response.status} ${response.statusText}. ${JSON.stringify(errorData)}`)
       }
 
-      // The WebSocket will handle the confirmed update for all clients
+      console.log(`Successfully updated dock ${id} to status ${status}`);
     } catch (error) {
       console.error('Error updating dock status:', error)
       // Revert the optimistic update

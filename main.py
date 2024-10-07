@@ -23,6 +23,8 @@ load_dotenv()
 # Set up logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+fastapi_logger = logging.getLogger(__name__)
+fastapi_logger.setLevel(logging.INFO)
 
 # Secret key to sign JWT tokens
 SECRET_KEY = os.getenv("SECRET_KEY")
@@ -156,7 +158,7 @@ class ConnectionManager:
         for connection in self.active_connections:
             await connection.send_text(message)
 
-    async def send_full_sync(self, websocket: WebSocket):
+    async def send_full_sync(self, websocket: WebSocket, db: Session):
         docks = db.query(Dock).all()
         await websocket.send_json({
             "type": "full_sync",
@@ -211,8 +213,10 @@ def get_docks(db: Session = Depends(get_db), current_user: User = Depends(get_cu
 
 @app.put("/api/docks/{dock_id}", response_model=DockInDB)
 async def update_dock(dock_id: int, dock_update: DockUpdate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    logger.info(f"Updating dock {dock_id} with status {dock_update.status}")
     db_dock = db.query(Dock).filter(Dock.id == dock_id).first()
     if db_dock is None:
+        logger.warning(f"Dock {dock_id} not found")
         raise HTTPException(status_code=404, detail="Dock not found")
     
     db_dock.status = dock_update.status
@@ -229,32 +233,39 @@ async def update_dock(dock_id: int, dock_update: DockUpdate, db: Session = Depen
         }
     })
 
+    logger.info(f"Broadcasting update: {update_message}")
+    
     # Broadcast update to all connected WebSocket clients
     await manager.broadcast(update_message)
 
     # Broadcast update to all connected SSE clients
     await sse_manager.broadcast(update_message)
 
+    logger.info("Update broadcast completed")
     return db_dock
 
 @app.get('/sse')
 async def sse(request: Request):
+    logger.info("New SSE connection established")
     async def event_generator():
         client = asyncio.Queue()
         await sse_manager.connect(client)
         try:
             while True:
                 if await request.is_disconnected():
+                    logger.info("SSE connection disconnected")
                     break
                 message = await client.get()
+                logger.info(f"Sending SSE message: {message}")
                 yield message
         finally:
             await sse_manager.disconnect(client)
+            logger.info("SSE connection closed")
 
     return EventSourceResponse(event_generator())
 
 @app.websocket("/ws")
-async def websocket_endpoint(websocket: WebSocket):
+async def websocket_endpoint(websocket: WebSocket, db: Session = Depends(get_db)):
     await manager.connect(websocket)
     try:
         while True:
@@ -263,7 +274,7 @@ async def websocket_endpoint(websocket: WebSocket):
             if message["type"] == "ping":
                 await websocket.send_json({"type": "pong"})
             elif message["type"] == "request_full_sync":
-                await manager.send_full_sync(websocket)
+                await manager.send_full_sync(websocket, db)
     except WebSocketDisconnect:
         manager.disconnect(websocket)
 
