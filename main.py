@@ -268,6 +268,7 @@ async def sse(request: Request):
 async def websocket_endpoint(websocket: WebSocket, db: Session = Depends(get_db)):
     await manager.connect(websocket)
     try:
+        await manager.send_full_sync(websocket, db)  # Send full sync immediately after connection
         while True:
             data = await websocket.receive_text()
             message = json.loads(data)
