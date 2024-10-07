@@ -35,9 +35,11 @@ const LoginPage: React.FC = () => {
         await login(data.access_token);
         router.push('/');
       } else {
-        setError('Invalid username or password');
+        const errorData = await response.json();
+        setError(errorData.detail || 'Invalid username or password');
       }
     } catch (error) {
+      console.error('Login error:', error);
       setError('An error occurred. Please try again.');
     } finally {
       setLoading(false);

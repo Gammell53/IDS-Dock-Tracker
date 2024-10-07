@@ -1,8 +1,7 @@
 'use client'
 
-import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
+import { useState, useEffect, useMemo, useCallback } from 'react'
 import { PlaneLanding, PlaneIcon, AlertTriangle, Snowflake, Loader, RefreshCw } from 'lucide-react'
-import io from 'socket.io-client'
 
 type DockStatus = 'available' | 'occupied' | 'out-of-service' | 'deiced'
 type DockLocation = 'southeast' | 'southwest'
@@ -23,7 +22,6 @@ export default function DockTracker() {
   const [statusFilter, setStatusFilter] = useState<DockStatus | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const socketRef = useRef<typeof io.Socket | null>(null)
 
   console.log('DockTracker rendering, loading:', loading, 'docks:', docks);
 

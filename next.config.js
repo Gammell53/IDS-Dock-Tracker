@@ -1,14 +1,15 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   async rewrites() {
+    const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
     return [
       {
         source: '/api/:path*',
-        destination: `${process.env.NEXT_PUBLIC_API_URL}/api/:path*`,
+        destination: `${apiUrl}/api/:path*`,
       },
       {
         source: '/token',
-        destination: `${process.env.NEXT_PUBLIC_API_URL}/token`,
+        destination: `${apiUrl}/token`,
       },
     ]
   },
