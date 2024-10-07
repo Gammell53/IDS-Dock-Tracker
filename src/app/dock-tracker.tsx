@@ -137,11 +137,8 @@ export default function DockTracker() {
       const updatedDock = await response.json()
       console.log(`Updated dock ${id} to status ${updatedDock.status}`)
 
-      setDocks(prevDocks => 
-        prevDocks.map(dock => 
-          dock.id === id ? {...updatedDock, name: getDockName(updatedDock)} : dock
-        )
-      )
+      // We don't need to update the local state here anymore,
+      // as the WebSocket will handle the update for all clients
     } catch (error) {
       console.error('Error updating dock status:', error)
       // Revert the local state change
