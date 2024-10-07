@@ -8,18 +8,22 @@ BRANCH="main"
 # Navigate to the project directory
 cd $REPO_DIR
 
+# Remove __pycache__ directories and .pyc files
+echo "Removing __pycache__ directories and .pyc files..."
+find . -type d -name "__pycache__" -exec rm -rf {} +
+find . -type f -name "*.pyc" -delete
+
 # Stash local changes
 git stash
 
-# Pull the latest code from GitHub
-git pull origin $BRANCH
+# Fetch the latest code from GitHub
+git fetch origin $BRANCH
+
+# Reset to the latest commit on the remote branch
+git reset --hard origin/$BRANCH
 
 # Apply stashed changes (if any)
 git stash pop
-
-# Remove any .pyc files and __pycache__ directories
-find . -type f -name "*.pyc" -delete
-find . -type d -name "__pycache__" -exec rm -r {} +
 
 # Frontend deployment
 echo "Deploying frontend..."
@@ -37,7 +41,7 @@ sudo systemctl restart ids-dock-tracker
 
 # Restart the frontend service (assuming you're using PM2 for the frontend)
 echo "Restarting frontend service..."
-pm2 restart next-app
+pm2 restart next-app   
 
 # Restart Nginx
 echo "Restarting Nginx..."
