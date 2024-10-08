@@ -27,49 +27,40 @@ export default function DockTracker() {
 
   const fetchDocks = useCallback(async () => {
     try {
-      setLoading(true);
-      console.log('Fetching docks...');
       const token = localStorage.getItem('token');
+      console.log('token - ', token)
+      if (!token) {
+        throw new Error('No token found');
+      }
       const response = await fetch('/api/docks', {
         headers: {
           'Authorization': `Bearer ${token}`,
         },
       });
-      console.log('Fetch response:', response);
       if (!response.ok) {
-        throw new Error(`Failed to fetch docks: ${response.status} ${response.statusText}`);
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to fetch docks');
       }
       const data = await response.json();
-      console.log('Fetched data:', data);
-      if (data.length === 0) {
-        console.log('No docks returned from API');
-      }
-      const formattedDocks = data.map((dock: Dock) => ({
-        ...dock,
-        name: getDockName(dock)
-      }));
-      console.log('Formatted docks:', formattedDocks);
-      setDocks(formattedDocks);
-      setError(null);
+      setDocks(data);
     } catch (error) {
       console.error('Error fetching docks:', error);
-      setError('Failed to fetch docks. Please try again.');
+      setError(error.message);
     } finally {
       setLoading(false);
-      console.log('Fetch completed, loading set to false');
     }
   }, []);
 
   useEffect(() => {
-    console.log('Setting up SSE connection');
-    const eventSource = new EventSource('/sse');
+    console.log('Setting up WebSocket connection');
+    const ws = new WebSocket('ws://localhost:3000/ws');
 
-    eventSource.onopen = () => {
-      console.log('SSE connection opened');
+    ws.onopen = () => {
+      console.log('WebSocket connection opened');
     };
 
-    eventSource.onmessage = (event) => {
-      console.log('Received SSE message:', event.data);
+    ws.onmessage = (event) => {
+      console.log('Received WebSocket message:', event.data);
       const data = JSON.parse(event.data);
       if (data.type === 'dock_updated') {
         console.log('Processing dock_updated event:', data.data);
@@ -78,17 +69,23 @@ export default function DockTracker() {
             dock.id === data.data.id ? {...data.data, name: getDockName(data.data)} : dock
           )
         );
+      } else if (data.type === 'full_sync') {
+        console.log('Processing full_sync event:', data.docks);
+        setDocks(data.docks.map(dock => ({...dock, name: getDockName(dock)})));
       }
     };
 
-    eventSource.onerror = (error) => {
-      console.error('SSE error:', error);
-      eventSource.close();
+    ws.onerror = (error) => {
+      console.error('WebSocket error:', error);
+    };
+
+    ws.onclose = () => {
+      console.log('WebSocket connection closed');
     };
 
     return () => {
-      console.log('Closing SSE connection');
-      eventSource.close();
+      console.log('Closing WebSocket connection');
+      ws.close();
     };
   }, []);
 

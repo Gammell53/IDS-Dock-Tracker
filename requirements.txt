@@ -4,3 +4,6 @@ flask-cors
 flask-socketio
 eventlet
 gunicorn
+fastapi
+jose
+passlib.context
