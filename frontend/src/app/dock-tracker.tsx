@@ -32,7 +32,7 @@ export default function DockTracker() {
       if (!token) {
         throw new Error('No token found');
       }
-      const response = await fetch('http://209.38.75.55/api/docks', {
+      const response = await fetch('https://209.38.75.55/api/docks', {
         headers: {
           'Authorization': `Bearer ${token}`,
         },
@@ -112,7 +112,7 @@ export default function DockTracker() {
         )
       );
 
-      const response = await fetch(`http://209.38.75.55/api/docks/${id}`, {
+      const response = await fetch(`https://209.38.75.55/api/docks/${id}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
