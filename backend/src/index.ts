@@ -106,7 +106,12 @@ function initDb() {
 
 // Elysia app
 const app = new Elysia()
-  .use(cors())
+  .use(cors({
+    origin: ["https://idsdock.com", "http://localhost:3000"],
+    methods: ["GET", "POST", "PUT", "DELETE"],
+    allowedHeaders: ["Content-Type", "Authorization"],
+    credentials: true,
+  }))
   .use(swagger())
   .use(jwt({
     name: 'jwt',
@@ -116,16 +121,16 @@ const app = new Elysia()
     initDb();
     logger.info("Application startup: Database initialized");
   })
-  .post("/api/token", async ({ body, jwt }) => {
+  .post("/api/token", async ({ body }) => {
     const { username, password } = body;
-    if (username === "deicer" && password === "deicer") {
-      const token = await jwt.sign({
-        sub: username,
-      }, { expiresIn: `${ACCESS_TOKEN_EXPIRE_MINUTES}m` });
-      console.log('token - ', token)
-      return { access_token: token, token_type: "bearer" };
+    
+    // TODO: Implement actual user authentication logic
+    if (username === "test" && password === "password") {
+      const token = await jwt.sign({ username });
+      return { access_token: token };
+    } else {
+      throw new Error("Invalid username or password");
     }
-    throw new Error("Invalid credentials");
   }, {
     body: t.Object({
       username: t.String(),

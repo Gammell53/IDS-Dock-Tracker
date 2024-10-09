@@ -22,21 +22,32 @@ function LoginPage() {
       const response = await fetch('https://209.38.75.55/api/token', {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/x-www-form-urlencoded',
+          'Content-Type': 'application/json',
         },
-        body: new URLSearchParams({
+        body: JSON.stringify({
           username: username,
           password: password,
         }),
+        credentials: 'include', // Add this line
       });
 
+      console.log('Response status:', response.status);
+      console.log('Response headers:', response.headers);
+
+      const responseText = await response.text();
+      console.log('Response text:', responseText);
+
       if (response.ok) {
-        const data = await response.json();
-        await login(data.access_token);
-        router.push('/');
+        try {
+          const data = JSON.parse(responseText);
+          await login(data.access_token);
+          router.push('/');
+        } catch (jsonError) {
+          console.error('JSON parsing error:', jsonError);
+          setError('Received invalid response from server');
+        }
       } else {
-        const errorData = await response.json();
-        setError(errorData.detail || 'Invalid username or password');
+        setError(`Login failed: ${response.status} ${response.statusText}`);
       }
     } catch (error) {
       console.error('Login error:', error);

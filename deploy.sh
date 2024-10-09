@@ -23,7 +23,8 @@ fi
 cd $UPLOAD_PATH
 
 # Build Docker images and run docker-compose
-echo "Building and running Docker containers..."
+echo "Building and restarting Docker containers..."
+docker-compose down
 docker-compose build
 docker-compose up -d
 
