@@ -19,8 +19,6 @@ function LoginPage() {
     setError('');
 
     try {
-      let username = 'deicer'
-      let password = 'deicer'
       const response = await fetch('/api/token', {
         method: 'POST',
         headers: {
