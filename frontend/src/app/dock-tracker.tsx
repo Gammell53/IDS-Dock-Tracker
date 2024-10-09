@@ -45,7 +45,11 @@ export default function DockTracker() {
       setDocks(data);
     } catch (error) {
       console.error('Error fetching docks:', error);
-      setError(error.message);
+      if (error instanceof Error) {
+        setError(error.message);
+      } else {
+        setError('An unknown error occurred');
+      }
     } finally {
       setLoading(false);
     }

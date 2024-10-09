@@ -1,9 +1,0 @@
-flask
-flask_sqlalchemy
-flask-cors
-flask-socketio
-eventlet
-gunicorn
-fastapi
-jose
-passlib.context

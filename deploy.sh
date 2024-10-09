@@ -1,66 +1,60 @@
 #!/bin/bash
 
 # Configuration
-REPO_DIR="/var/www/ids-dock-tracker"
+REPO_DIR="/var/www/IDS-Dock-Tracker"
 GITHUB_REPO="https://github.com/Gammell53/IDS-Dock-Tracker.git"
-BRANCH="main"
-VENV_DIR="$REPO_DIR/venv"
+BRANCH="nodejs"
+SERVER_IP="209.38.75.55"
+SERVER_USER="root"
+UPLOAD_PATH="/home/ids-deploy"
 
-# Navigate to the project directory
-cd $REPO_DIR
-
-# Remove __pycache__ directories and .pyc files
-echo "Removing __pycache__ directories and .pyc files..."
-find . -type d -name "__pycache__" -exec rm -rf {} +
-find . -type f -name "*.pyc" -delete
-
-# Check for uncommitted changes
-if [[ $(git status --porcelain) ]]; then
-    echo "There are uncommitted changes. Please commit or stash them before deploying."
-    exit 1
-fi
-
-# Fetch the latest code from GitHub
-git fetch origin $BRANCH
-
-# Check if we're behind the remote
-if [[ $(git rev-list HEAD..origin/$BRANCH --count) -ne 0 ]]; then
-    echo "Local branch is behind remote. Attempting to merge..."
-    if git merge origin/$BRANCH; then
-        echo "Merge successful."
-    else
-        echo "Merge failed. Please resolve conflicts manually and try again."
-        exit 1
-    fi
-else
-    echo "Local branch is up to date."
-fi
-
-# Frontend deployment
-echo "Deploying frontend..."
-npm install
+# Build frontend
+echo "Building frontend..."
+cd frontend
+npm i
 npm run build
+cd ..
 
-# Backend deployment
-echo "Deploying backend..."
-if [ ! -d "$VENV_DIR" ]; then
-    echo "Creating virtual environment..."
-    python3 -m venv $VENV_DIR
-fi
+# Build backend
+echo "Building backend..."
+cd backend
+npm i
+bun run build --target=bun
+cd ..
 
-# Use the virtual environment's pip directly
-$VENV_DIR/bin/pip install -r requirements.txt
+# Build Docker images
+echo "Building Docker images..."
+docker-compose build
 
-# Restart the backend service
-echo "Restarting backend service..."
-sudo systemctl restart ids-dock-tracker
+# Save images to tar files
+echo "Saving Docker images..."
+docker save ids-dock-tracker_frontend > frontend_image.tar
+docker save ids-dock-tracker_backend > backend_image.tar
 
-# Restart the frontend service (assuming you're using PM2 for the frontend)
-echo "Restarting frontend service..."
-pm2 restart next-app   
+# Transfer images to server
+echo "Transferring Docker images to server..."
+scp frontend_image.tar backend_image.tar $SERVER_USER@$SERVER_IP:$UPLOAD_PATH
 
-# Restart Nginx
-echo "Restarting Nginx..."
-sudo systemctl restart nginx
+# SSH into server and load images
+echo "Loading Docker images on server..."
+ssh $SERVER_USER@$SERVER_IP << EOF
+    cd $UPLOAD_PATH
+    docker load < frontend_image.tar
+    docker load < backend_image.tar
+    rm frontend_image.tar backend_image.tar
 
-echo "Deployment completed!"
+    # Stop and remove existing containers
+    docker-compose down
+
+    # Start new containers
+    docker-compose up -d
+
+    # Clean up old images
+    docker image prune -f
+EOF
+
+# Clean up local tar files
+echo "Cleaning up local files..."
+rm frontend_image.tar backend_image.tar
+
+echo "Deployment complete!"
