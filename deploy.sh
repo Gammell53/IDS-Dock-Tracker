@@ -9,13 +9,13 @@ UPLOAD_PATH="/home/ids-deploy"
 
 # Pull from GitHub repository
 echo "Pulling from GitHub repository..."
-ssh $SERVER_USER@$SERVER_IP << EOF
-    cd $UPLOAD_PATH
-    git pull origin $BRANCH
-    if [ $? -ne 0 ]; then
-        git clone -b $BRANCH $GITHUB_REPO .
-    fi
-EOF
+# ssh $SERVER_USER@$SERVER_IP << EOF
+cd $UPLOAD_PATH
+git pull origin $BRANCH
+if [ $? -ne 0 ]; then
+    git clone -b $BRANCH $GITHUB_REPO .
+fi
+# EOF
 
 # SSH into server and perform deployment steps
 # echo "Performing deployment steps on server..."
