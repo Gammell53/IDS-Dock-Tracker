@@ -1,0 +1,14 @@
+[Unit]
+Description=IDS Dock Tracker Bun Backend
+After=network.target
+
+[Service]
+ExecStart=/home/ubuntu/.bun/bin/bun run /var/www/ids-dock-tracker/backend/src/index.ts
+WorkingDirectory=/var/www/ids-dock-tracker/backend
+User=ubuntu
+Group=ubuntu
+Restart=always
+Environment=NODE_ENV=production
+
+[Install]
+WantedBy=multi-user.target

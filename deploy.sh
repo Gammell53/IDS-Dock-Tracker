@@ -1,66 +1,34 @@
 #!/bin/bash
 
 # Configuration
-REPO_DIR="/var/www/ids-dock-tracker"
 GITHUB_REPO="https://github.com/Gammell53/IDS-Dock-Tracker.git"
-BRANCH="main"
-VENV_DIR="$REPO_DIR/venv"
+BRANCH="nodejs"
+SERVER_IP="209.38.75.55"
+SERVER_USER="root"
+UPLOAD_PATH="/home/ids-deploy"
 
-# Navigate to the project directory
-cd $REPO_DIR
-
-# Remove __pycache__ directories and .pyc files
-echo "Removing __pycache__ directories and .pyc files..."
-find . -type d -name "__pycache__" -exec rm -rf {} +
-find . -type f -name "*.pyc" -delete
-
-# Check for uncommitted changes
-if [[ $(git status --porcelain) ]]; then
-    echo "There are uncommitted changes. Please commit or stash them before deploying."
-    exit 1
-fi
-
-# Fetch the latest code from GitHub
-git fetch origin $BRANCH
-
-# Check if we're behind the remote
-if [[ $(git rev-list HEAD..origin/$BRANCH --count) -ne 0 ]]; then
-    echo "Local branch is behind remote. Attempting to merge..."
-    if git merge origin/$BRANCH; then
-        echo "Merge successful."
-    else
-        echo "Merge failed. Please resolve conflicts manually and try again."
-        exit 1
+# Pull from GitHub repository
+echo "Pulling from GitHub repository..."
+ssh $SERVER_USER@$SERVER_IP << EOF
+    cd $UPLOAD_PATH
+    git pull origin $BRANCH
+    if [ $? -ne 0 ]; then
+        git clone -b $BRANCH $GITHUB_REPO .
     fi
-else
-    echo "Local branch is up to date."
-fi
+EOF
 
-# Frontend deployment
-echo "Deploying frontend..."
-npm install
-npm run build
+# SSH into server and perform deployment steps
+echo "Performing deployment steps on server..."
+ssh $SERVER_USER@$SERVER_IP << EOF
+    cd $UPLOAD_PATH
 
-# Backend deployment
-echo "Deploying backend..."
-if [ ! -d "$VENV_DIR" ]; then
-    echo "Creating virtual environment..."
-    python3 -m venv $VENV_DIR
-fi
+    # Build Docker images and run docker-compose
+    echo "Building and running Docker containers..."
+    docker-compose build
+    docker-compose up -d
 
-# Use the virtual environment's pip directly
-$VENV_DIR/bin/pip install -r requirements.txt
+    # Clean up old images
+    docker image prune -f
+EOF
 
-# Restart the backend service
-echo "Restarting backend service..."
-sudo systemctl restart ids-dock-tracker
-
-# Restart the frontend service (assuming you're using PM2 for the frontend)
-echo "Restarting frontend service..."
-pm2 restart next-app   
-
-# Restart Nginx
-echo "Restarting Nginx..."
-sudo systemctl restart nginx
-
-echo "Deployment completed!"
+echo "Deployment complete!"
