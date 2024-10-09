@@ -22,7 +22,7 @@ const FlightArrivals: React.FC = () => {
     const fetchFlights = async () => {
       try {
         setLoading(true);
-        const response = await fetch('/api/mock-flights');
+        const response = await fetch('http://209.38.75.55/api/mock-flights');
         if (!response.ok) {
           throw new Error('Failed to fetch flights');
         }

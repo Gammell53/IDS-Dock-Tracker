@@ -134,19 +134,19 @@ const app = new Elysia()
   })
   .get("/api/docks", async ({ request, jwt, set }) => {
     try {
-      const authHeader = request.headers.get('Authorization');
-      if (!authHeader || !authHeader.startsWith('Bearer ')) {
-        set.status = 401;
-        return { error: "No token provided" };
-      }
+      // const authHeader = request.headers.get('Authorization');
+      // if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      //   set.status = 401;
+      //   return { error: "No token provided" };
+      // }
 
-      const token = authHeader.split(' ')[1];
-      const payload = await jwt.verify(token);
+      // const token = authHeader.split(' ')[1];
+      // const payload = await jwt.verify(token);
 
-      if (!payload) {
-        set.status = 401;
-        return { error: "Invalid token" };
-      }
+      // if (!payload) {
+      //   set.status = 401;
+      //   return { error: "Invalid token" };
+      // }
 
       const docks = db.query("SELECT * FROM docks").all() as Dock[];
       return docks;
@@ -157,8 +157,8 @@ const app = new Elysia()
     }
   })
   .put("/api/docks/:id", async ({ params, body, jwt }) => {
-    const payload = await jwt.verify();
-    console.log('put payload - ', payload)
+    // const payload = await jwt.verify();
+    // console.log('put payload - ', payload)
     // if (!payload) throw new Error("Unauthorized");
     
     const { id } = params;

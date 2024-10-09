@@ -32,7 +32,7 @@ export default function DockTracker() {
       if (!token) {
         throw new Error('No token found');
       }
-      const response = await fetch('/api/docks', {
+      const response = await fetch('http://209.38.75.55/api/docks', {
         headers: {
           'Authorization': `Bearer ${token}`,
         },
@@ -57,7 +57,7 @@ export default function DockTracker() {
 
   useEffect(() => {
     console.log('Setting up WebSocket connection');
-    const ws = new WebSocket('ws://localhost:3000/ws');
+    const ws = new WebSocket('ws://209.38.75.55/ws');
 
     ws.onopen = () => {
       console.log('WebSocket connection opened');
@@ -112,7 +112,7 @@ export default function DockTracker() {
         )
       );
 
-      const response = await fetch(`/api/docks/${id}`, {
+      const response = await fetch(`http://209.38.75.55/api/docks/${id}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
