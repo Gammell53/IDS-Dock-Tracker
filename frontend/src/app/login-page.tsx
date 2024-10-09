@@ -19,7 +19,9 @@ function LoginPage() {
     setError('');
 
     try {
-      const response = await fetch('/token', {
+      let username = 'deicer'
+      let password = 'deicer'
+      const response = await fetch('/api/token', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/x-www-form-urlencoded',
