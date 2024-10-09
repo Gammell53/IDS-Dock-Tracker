@@ -46,3 +46,6 @@ echo "Deployment complete!"
 # npm i
 # bun run build --target=bun
 # cd ..
+
+# Re-creates the nginx container to pick up new config
+# docker-compose up -d --no-deps --force-recreate nginx
