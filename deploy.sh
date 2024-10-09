@@ -2,7 +2,7 @@
 
 # Configuration
 GITHUB_REPO="https://github.com/Gammell53/IDS-Dock-Tracker.git"
-BRANCH="nodejs"
+BRANCH="deploy-test"
 SERVER_IP="209.38.75.55"
 SERVER_USER="root"
 UPLOAD_PATH="/home/ids-deploy"
@@ -32,3 +32,17 @@ ssh $SERVER_USER@$SERVER_IP << EOF
 EOF
 
 echo "Deployment complete!"
+
+# Build frontend
+# echo "Building frontend..."
+# cd frontend
+# npm i
+# npm run build
+# cd ..
+
+# # Build backend
+# echo "Building backend..."
+# cd backend
+# npm i
+# bun run build --target=bun
+# cd ..

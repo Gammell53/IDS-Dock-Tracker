@@ -4,7 +4,7 @@ FROM node:18-alpine AS build
 WORKDIR /app
 
 COPY package*.json ./
-RUN npm i
+RUN npm ci
 
 COPY . .
 RUN npm run build
@@ -14,12 +14,11 @@ FROM node:18-alpine
 
 WORKDIR /app
 
-COPY package*.json ./
-RUN npm i --only=production
-
-COPY .next ./.next
-# COPY public ./public
-COPY next.config.* ./
+COPY --from=build /app/package*.json ./
+COPY --from=build /app/node_modules ./node_modules
+COPY --from=build /app/.next ./.next
+# COPY --from=build /app/public ./public
+COPY --from=build /app/next.config.* ./
 
 EXPOSE 3000
 
