@@ -57,7 +57,7 @@ export default function DockTracker() {
 
   useEffect(() => {
     console.log('Setting up WebSocket connection');
-    const ws = new WebSocket('ws://209.38.75.55/ws');
+    const ws = new WebSocket('wss://209.38.75.55/ws');
 
     ws.onopen = () => {
       console.log('WebSocket connection opened');
