@@ -48,4 +48,4 @@ echo "Deployment complete!"
 # cd ..
 
 # Re-creates the nginx container to pick up new config
-# docker-compose up -d --no-deps --force-recreate nginx
+# docker-compose up  --no-deps --force-recreate nginx
