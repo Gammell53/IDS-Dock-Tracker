@@ -1,24 +1,24 @@
 # Build stage
-FROM node:18-alpine AS build
+FROM oven/bun:1 as build
 
 WORKDIR /app
 
 COPY package*.json ./
-RUN npm i
+RUN bun install
 
 COPY . .
-RUN npm run build
+RUN bun run build --target=bun
 
 # Production stage
-FROM node:18-alpine
+FROM oven/bun:1
 
 WORKDIR /app
 
+COPY --from=build /app/dist ./dist
 COPY package*.json ./
-RUN npm ci --only=production
 
-COPY dist ./dist
+RUN bun install --production
 
-EXPOSE 3000
+EXPOSE 3001
 
-CMD ["node", "dist/index.js"]
+CMD ["bun", "dist/index.js"]

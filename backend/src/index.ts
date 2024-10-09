@@ -116,7 +116,7 @@ const app = new Elysia()
     initDb();
     logger.info("Application startup: Database initialized");
   })
-  .post("/token", async ({ body, jwt }) => {
+  .post("/api/token", async ({ body, jwt }) => {
     const { username, password } = body;
     if (username === "deicer" && password === "deicer") {
       const token = await jwt.sign({
