@@ -111,7 +111,7 @@ function initDb() {
 // Elysia app
 const app = new Elysia()
   .use(cors({
-    origin: ["https://idsdock.com", "http://localhost:3000"],
+    origin: ["https://idsdock.com"],
     methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization"],
     credentials: true,
