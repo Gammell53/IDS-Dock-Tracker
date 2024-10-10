@@ -3,7 +3,6 @@ import { cors } from "@elysiajs/cors";
 import { jwt } from "@elysiajs/jwt";
 import { swagger } from "@elysiajs/swagger";
 import { Database } from "bun:sqlite";
-import { compare, hash } from "bcrypt";
 import { config } from "dotenv";
 
 // Load environment variables
@@ -111,7 +110,7 @@ function initDb() {
 // Elysia app
 const app = new Elysia()
   .use(cors({
-    origin: ["https://idsdock.com"],
+    origin: (origin) => origin.includes('idsdock.com') || origin.includes('localhost'),
     methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization"],
     credentials: true,
@@ -148,13 +147,9 @@ const app = new Elysia()
   .get("/api/docks", async ({ set }) => {
     try {
       const docks = db.query("SELECT * FROM docks").all();
-      set.headers['Access-Control-Allow-Origin'] = 'https://idsdock.com';
-      set.headers['Access-Control-Allow-Methods'] = 'GET, POST, PUT, DELETE, OPTIONS';
-      set.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization';
-      set.headers['Access-Control-Allow-Credentials'] = 'true';
       return docks;
     } catch (error) {
-      logger.error("Error fetching docks: " + error);
+      console.error("Error fetching docks:", error);
       set.status = 500;
       return { error: "Internal server error" };
     }

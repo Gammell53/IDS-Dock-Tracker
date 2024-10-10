@@ -16,6 +16,10 @@ interface Dock {
 
 const southwestDockNames = ['H84', 'H86', 'H87', 'H89', 'H90', 'H92', 'H93', 'H95', 'H96', 'H98', 'H99']
 
+// Use an environment variable for the API URL
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'https://idsdock.com/api';
+const WS_URL = process.env.NEXT_PUBLIC_WS_URL || 'wss://idsdock.com/ws';
+
 export default function DockTracker() {
   const [docks, setDocks] = useState<Dock[]>([])
   const [activeTab, setActiveTab] = useState<DockLocation>('southwest')
@@ -32,7 +36,7 @@ export default function DockTracker() {
       if (!token) {
         throw new Error('No token found');
       }
-      const response = await fetch('https://209.38.75.55/api/docks', {
+      const response = await fetch(`${API_URL}/docks`, {
         headers: {
           'Authorization': `Bearer ${token}`,
         },
@@ -57,7 +61,7 @@ export default function DockTracker() {
 
   useEffect(() => {
     console.log('Setting up WebSocket connection');
-    const ws = new WebSocket('wss://209.38.75.55/ws');
+    const ws = new WebSocket(WS_URL);
 
     ws.onopen = () => {
       console.log('WebSocket connection opened');
@@ -112,7 +116,7 @@ export default function DockTracker() {
         )
       );
 
-      const response = await fetch(`https://209.38.75.55/api/docks/${id}`, {
+      const response = await fetch(`${API_URL}/docks/${id}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
