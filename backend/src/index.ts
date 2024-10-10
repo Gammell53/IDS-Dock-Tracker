@@ -110,7 +110,20 @@ function initDb() {
 // Elysia app
 const app = new Elysia()
   .use(cors({
-    origin: (origin) => origin.includes('idsdock.com') || origin.includes('localhost'),
+    origin: (origin) => {
+      logger.info(`Received request with origin: ${JSON.stringify(origin)}`);
+      if (origin === null || origin === undefined) {
+        logger.warn('Origin is null or undefined');
+        return false;
+      }
+      if (typeof origin !== 'string') {
+        logger.warn(`Origin is not a string: ${typeof origin}`);
+        return false;
+      }
+      const allowed = origin.includes('idsdock.com') || origin.includes('localhost');
+      logger.info(`Origin ${origin} is ${allowed ? 'allowed' : 'not allowed'}`);
+      return allowed;
+    },
     methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization"],
     credentials: true,
