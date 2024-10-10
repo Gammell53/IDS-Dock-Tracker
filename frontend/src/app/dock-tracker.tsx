@@ -26,6 +26,7 @@ export default function DockTracker() {
   const [statusFilter, setStatusFilter] = useState<DockStatus | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [wsConnected, setWsConnected] = useState(false)
 
   console.log('DockTracker rendering, loading:', loading, 'docks:', docks);
 
@@ -59,12 +60,13 @@ export default function DockTracker() {
     }
   }, []);
 
-  useEffect(() => {
+  const connectWebSocket = useCallback(() => {
     console.log('Setting up WebSocket connection');
     const ws = new WebSocket(WS_URL);
 
     ws.onopen = () => {
       console.log('WebSocket connection opened');
+      setWsConnected(true);
     };
 
     ws.onmessage = (event) => {
@@ -85,17 +87,34 @@ export default function DockTracker() {
 
     ws.onerror = (error) => {
       console.error('WebSocket error:', error);
+      setWsConnected(false);
     };
 
     ws.onclose = () => {
       console.log('WebSocket connection closed');
+      setWsConnected(false);
+      // Attempt to reconnect after 5 seconds
+      setTimeout(connectWebSocket, 5000);
     };
+
+    // Ping the server every 30 seconds to keep the connection alive
+    const pingInterval = setInterval(() => {
+      if (ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ type: "ping" }));
+      }
+    }, 30000);
 
     return () => {
       console.log('Closing WebSocket connection');
+      clearInterval(pingInterval);
       ws.close();
     };
   }, []);
+
+  useEffect(() => {
+    const cleanup = connectWebSocket();
+    return cleanup;
+  }, [connectWebSocket]);
 
   const getDockName = (dock: Dock) => {
     if (dock.location === 'southwest') {
@@ -174,6 +193,13 @@ export default function DockTracker() {
     fetchDocks();
   }, [fetchDocks]);
 
+  // You can add a visual indicator for the WebSocket connection status
+  const renderConnectionStatus = () => (
+    <div className={`fixed top-4 right-4 px-3 py-1 rounded-full ${wsConnected ? 'bg-green-500' : 'bg-red-500'}`}>
+      {wsConnected ? 'Connected' : 'Disconnected'}
+    </div>
+  );
+
   if (loading) {
     console.log('Rendering loading state');
     return (
@@ -216,6 +242,7 @@ export default function DockTracker() {
 
   return (
     <div className="space-y-6 bg-gray-900 text-white p-6 rounded-lg">
+      {renderConnectionStatus()}
       <div className="bg-gray-800 shadow-lg rounded-lg p-6">
         <h2 className="text-2xl font-semibold mb-4 text-indigo-400">Dock Location</h2>
         <select 

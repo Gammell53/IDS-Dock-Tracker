@@ -198,12 +198,12 @@ const app = new Elysia()
   })
   .ws("/ws", {
     open: (ws) => {
-      console.log('ws - open', ws)
+      console.log('WebSocket connection opened');
       manager.connect(ws);
       manager.sendFullSync(ws);
     },
     message: (ws, message) => {
-      console.log('ws - message', ws)
+      console.log('Received WebSocket message:', message);
       const data = JSON.parse(message as string);
       if (data.type === "ping") {
         ws.send(JSON.stringify({ type: "pong" }));
@@ -212,7 +212,7 @@ const app = new Elysia()
       }
     },
     close: (ws) => {
-      console.log('ws - close', ws)
+      console.log('WebSocket connection closed');
       manager.disconnect(ws);
     },
   })
