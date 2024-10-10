@@ -131,7 +131,7 @@ const app = new Elysia()
     logger.info(`Login attempt for user: ${username}`);
     
     // TODO: Implement actual user authentication logic
-    if (username === "test" && password === "password") {
+    if (username === "deicer" && password === "deicer") {
       const token = await jwt.sign({ username });
       logger.info(`Login successful for user: ${username}`);
       return { access_token: token };
@@ -145,26 +145,16 @@ const app = new Elysia()
       password: t.String(),
     })
   })
-  .get("/api/docks", async ({ request, jwt, set }) => {
+  .get("/api/docks", async ({ set }) => {
     try {
-      // const authHeader = request.headers.get('Authorization');
-      // if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      //   set.status = 401;
-      //   return { error: "No token provided" };
-      // }
-
-      // const token = authHeader.split(' ')[1];
-      // const payload = await jwt.verify(token);
-
-      // if (!payload) {
-      //   set.status = 401;
-      //   return { error: "Invalid token" };
-      // }
-
-      const docks = db.query("SELECT * FROM docks").all() as Dock[];
+      const docks = db.query("SELECT * FROM docks").all();
+      set.headers['Access-Control-Allow-Origin'] = 'https://idsdock.com';
+      set.headers['Access-Control-Allow-Methods'] = 'GET, POST, PUT, DELETE, OPTIONS';
+      set.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization';
+      set.headers['Access-Control-Allow-Credentials'] = 'true';
       return docks;
     } catch (error) {
-      console.error("Error fetching docks:", error);
+      logger.error("Error fetching docks: " + error);
       set.status = 500;
       return { error: "Internal server error" };
     }
