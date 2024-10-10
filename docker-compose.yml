@@ -13,23 +13,20 @@ services:
       - backend
 
   backend:
-    build:
-      context: ./backend
-      dockerfile: Dockerfile
+    build: ./backend
     ports:
       - "3001:3001"
     environment:
       - NODE_ENV=production
 
   nginx:
-    image: nginx:alpine
+    image: nginx:latest
     ports:
       - "80:80"
       - "443:443"
     volumes:
-      - ./nginx.conf:/etc/nginx/nginx.conf:ro
-      - /etc/letsencrypt/live/idsdock.com/fullchain.pem:/etc/letsencrypt/live/idsdock.com/fullchain.pem:ro
-      - /etc/letsencrypt/live/idsdock.com/privkey.pem:/etc/letsencrypt/live/idsdock.com/privkey.pem:ro
+      - ./nginx.conf:/etc/nginx/nginx.conf
+      - /etc/letsencrypt:/etc/letsencrypt
     depends_on:
       - frontend
       - backend

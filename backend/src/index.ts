@@ -211,7 +211,7 @@ const app = new Elysia()
     },
   })
   .get("/api/debug", () => ({ status: "OK", message: "API is running" }))
-  .listen(3000);
+  .listen(3001);
 
 console.log(
   `🦊 Elysia is running at ${app.server?.hostname}:${app.server?.port}`
