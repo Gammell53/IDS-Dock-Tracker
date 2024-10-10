@@ -19,7 +19,7 @@ function LoginPage() {
     setError('');
 
     try {
-      const response = await fetch('https://209.38.75.55/api/token', {
+      const response = await fetch('https://idsdock.com/api/token', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -28,7 +28,7 @@ function LoginPage() {
           username: username,
           password: password,
         }),
-        credentials: 'include', // Add this line
+        credentials: 'include',
       });
 
       console.log('Response status:', response.status);

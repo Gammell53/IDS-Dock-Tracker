@@ -9,17 +9,12 @@ UPLOAD_PATH="/home/ids-deploy"
 
 # Pull from GitHub repository
 echo "Pulling from GitHub repository..."
-# ssh $SERVER_USER@$SERVER_IP << EOF
 cd $UPLOAD_PATH
 git pull origin $BRANCH
 if [ $? -ne 0 ]; then
     git clone -b $BRANCH $GITHUB_REPO .
 fi
-# EOF
 
-# SSH into server and perform deployment steps
-# echo "Performing deployment steps on server..."
-# ssh $SERVER_USER@$SERVER_IP << EOF
 cd $UPLOAD_PATH
 
 # Build Docker images and run docker-compose
@@ -28,9 +23,12 @@ docker-compose down
 docker-compose build
 docker-compose up -d
 
+# Explicitly restart Nginx container
+echo "Restarting Nginx container..."
+docker-compose up -d --no-deps --force-recreate nginx
+
 # Clean up old images
 docker image prune -f
-# EOF
 
 echo "Deployment complete!"
 
