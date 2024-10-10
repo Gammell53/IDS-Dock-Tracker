@@ -10,7 +10,11 @@ import { config } from "dotenv";
 config();
 
 // Set up logging
-const logger = console;
+const logger = {
+  info: (message: string) => console.log(`[INFO] ${message}`),
+  warn: (message: string) => console.warn(`[WARN] ${message}`),
+  error: (message: string) => console.error(`[ERROR] ${message`),
+};
 
 // Secret key to sign JWT tokens
 const SECRET_KEY = process.env.SECRET_KEY || "your_secret_key_here";
@@ -121,14 +125,18 @@ const app = new Elysia()
     initDb();
     logger.info("Application startup: Database initialized");
   })
-  .post("/api/token", async ({ body }) => {
+  .post("/api/token", async ({ body, jwt }) => {
     const { username, password } = body;
+    
+    logger.info(`Login attempt for user: ${username}`);
     
     // TODO: Implement actual user authentication logic
     if (username === "test" && password === "password") {
       const token = await jwt.sign({ username });
+      logger.info(`Login successful for user: ${username}`);
       return { access_token: token };
     } else {
+      logger.warn(`Login failed for user: ${username}`);
       throw new Error("Invalid username or password");
     }
   }, {
