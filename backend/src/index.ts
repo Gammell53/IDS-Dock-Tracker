@@ -4,7 +4,6 @@ import { jwt } from "@elysiajs/jwt";
 import { swagger } from "@elysiajs/swagger";
 import Database from "better-sqlite3";
 import { config } from "dotenv";
-import { rateLimit } from '@elysiajs/rate-limit';
 
 // Load environment variables
 config();
@@ -25,14 +24,33 @@ if (!SECRET_KEY) {
 
 const ACCESS_TOKEN_EXPIRE_MINUTES = 10080;  // 7 days * 24 hours * 60 mins
 
-// Database setup
-const db = new Database("docks.db");
+// Database setup with connection pooling
+class DatabasePool {
+  private pool: Database[];
+  private maxConnections: number;
+
+  constructor(dbPath: string, maxConnections: number) {
+    this.maxConnections = maxConnections;
+    this.pool = Array.from({ length: maxConnections }, () => {
+      const db = new Database(dbPath);
+      db.pragma('journal_mode = WAL');
+      db.pragma('synchronous = NORMAL');
+      return db;
+    });
+  }
+
+  getConnection(): Database {
+    return this.pool[Math.floor(Math.random() * this.maxConnections)];
+  }
+}
+
+const dbPool = new DatabasePool("docks.db", 10);
 
 // Simple in-memory cache
 class SimpleCache {
   private cache: Map<string, { data: any; expiry: number }> = new Map();
 
-  async get(key: string): Promise<any | null> {
+  get(key: string): any | null {
     const item = this.cache.get(key);
     if (item && item.expiry > Date.now()) {
       return item.data;
@@ -40,40 +58,19 @@ class SimpleCache {
     return null;
   }
 
-  async set(key: string, data: any, ttlSeconds: number): Promise<void> {
+  set(key: string, data: any, ttlSeconds: number): void {
     this.cache.set(key, { data, expiry: Date.now() + ttlSeconds * 1000 });
   }
 }
 
 const cache = new SimpleCache();
 
-// Models
-interface Dock {
-  id: number;
-  location: string;
-  number: number;
-  status: string;
-  name: string;
-}
-
-interface DockUpdate {
-  status: string;
-}
-
-interface User {
-  username: string;
-}
-
 // WebSocket connections store
 class ConnectionManager {
   private connections: Set<WebSocket> = new Set();
-<<<<<<< HEAD
-  private MAX_CONNECTIONS = 100;
-=======
-  private MAX_CONNECTIONS = 100; // Adjust as needed
->>>>>>> deploy-test-2
+  private MAX_CONNECTIONS = 1000; // Increased max connections
 
-  async connect(ws: WebSocket): Promise<boolean> {
+  connect(ws: WebSocket): boolean {
     if (this.connections.size >= this.MAX_CONNECTIONS) {
       return false;
     }
@@ -85,10 +82,11 @@ class ConnectionManager {
     this.connections.delete(ws);
   }
 
-  async broadcast(message: string) {
+  broadcast(message: string) {
+    const messageBuffer = Buffer.from(message);
     for (const ws of this.connections) {
       try {
-        ws.send(message);
+        ws.send(messageBuffer);
       } catch (error) {
         logger.error(`Error broadcasting message: ${error}`);
         this.disconnect(ws);
@@ -98,7 +96,7 @@ class ConnectionManager {
 
   async sendFullSync(ws: WebSocket) {
     try {
-      const docks = db.prepare("SELECT * FROM docks").all() as Dock[];
+      const docks = cache.get('all_docks') || await fetchAllDocks();
       ws.send(JSON.stringify({
         type: "full_sync",
         docks: docks
@@ -113,6 +111,7 @@ const manager = new ConnectionManager();
 
 // Initialize database
 async function initDb() {
+  const db = dbPool.getConnection();
   try {
     db.exec(`
       CREATE TABLE IF NOT EXISTS docks (
@@ -150,21 +149,21 @@ async function initDb() {
   }
 }
 
-// Make sure to call initDb() when the application starts
-initDb().then(() => {
-  console.log("Database initialized");
-}).catch((error) => {
-  console.error("Failed to initialize database:", error);
-});
+async function fetchAllDocks() {
+  const db = dbPool.getConnection();
+  const docks = db.prepare("SELECT * FROM docks").all();
+  cache.set('all_docks', docks, 60); // Cache for 60 seconds
+  return docks;
+}
 
 // Elysia app
 const app = new Elysia()
   .use(cors({
-    origin: (origin: string | null | undefined) => {
+    origin: (origin) => {
       logger.info(`Received request with origin: ${JSON.stringify(origin)}`);
       if (origin === null || origin === undefined) {
         logger.warn('Origin is null or undefined');
-        return true; // Allow requests with no origin (like mobile apps or curl requests)
+        return true;
       }
       if (typeof origin !== 'string') {
         logger.warn(`Origin is not a string: ${typeof origin}`);
@@ -182,50 +181,6 @@ const app = new Elysia()
   .use(jwt({
     name: 'jwt',
     secret: SECRET_KEY,
-<<<<<<< HEAD
-  }));
-
-app.post("/api/token", async ({ body, jwt }: { body: any, jwt: any }) => {
-  const { username, password } = body;
-  
-  logger.info(`Login attempt for user: ${username}`);
-  
-  // TODO: Implement actual user authentication logic
-  if (username === "deicer" && password === "deicer") {
-    const token = await jwt.sign({ username });
-    logger.info(`Login successful for user: ${username}`);
-    return { access_token: token };
-  } else {
-    logger.warn(`Login failed for user: ${username}`);
-    throw new Error("Invalid username or password");
-  }
-}, {
-  body: t.Object({
-    username: t.String(),
-    password: t.String(),
-  })
-})
-.get("/api/docks", async ({ set }: { set: any }) => {
-  try {
-    const cachedDocks = await cache.get('all_docks');
-    if (cachedDocks) return cachedDocks;
-
-    const docks = db.prepare("SELECT * FROM docks").all();
-    await cache.set('all_docks', docks, 60); // Cache for 60 seconds
-    return docks;
-  } catch (error) {
-    logger.error(`Error fetching docks: ${error}`);
-    set.status = 500;
-    return { error: "Internal server error", details: (error as Error).message };
-  }
-})
-.put("/api/docks/:id", async ({ params, body, jwt }: { params: any, body: any, jwt: any }) => {
-  try {
-=======
-  }))
-  .use(rateLimit({
-    duration: 60000, // 1 minute
-    max: 100 // max 100 requests per minute
   }))
   .onStart(() => {
     initDb();
@@ -253,30 +208,25 @@ app.post("/api/token", async ({ body, jwt }: { body: any, jwt: any }) => {
   })
   .get("/api/docks", async ({ set }) => {
     try {
-      const cachedDocks = await cache.get('all_docks');
+      const cachedDocks = cache.get('all_docks');
       if (cachedDocks) return cachedDocks;
 
-      const conn = await dbPool.getConnection();
-      const docks = conn.query("SELECT * FROM docks").all();
-      await cache.set('all_docks', docks, 60); // Cache for 60 seconds
-      return docks;
+      return await fetchAllDocks();
     } catch (error) {
-      console.error("Error fetching docks:", error);
+      logger.error(`Error fetching docks: ${error}`);
       set.status = 500;
       return { error: "Internal server error" };
     }
   })
   .put("/api/docks/:id", async ({ params, body, jwt }) => {
-    // const payload = await jwt.verify();
-    // console.log('put payload - ', payload)
-    // if (!payload) throw new Error("Unauthorized");
-    
->>>>>>> deploy-test-2
     const { id } = params;
     const { status } = body;
     
-    const result = db.prepare("UPDATE docks SET status = ? WHERE id = ? RETURNING *")
-      .get(status, id) as Dock | undefined;
+    const db = dbPool.getConnection();
+    const result = db.transaction(() => {
+      return db.prepare("UPDATE docks SET status = ? WHERE id = ? RETURNING *")
+        .get(status, id);
+    })() as Dock | undefined;
     
     if (!result) throw new Error("Dock not found");
     
@@ -285,67 +235,44 @@ app.post("/api/token", async ({ body, jwt }: { body: any, jwt: any }) => {
       data: result
     });
     
-    await manager.broadcast(updateMessage);
-    await cache.set('all_docks', null, 0); // Invalidate cache
+    manager.broadcast(updateMessage);
+    cache.set('all_docks', null, 0); // Invalidate cache
     
     return result;
-  } catch (error) {
-    logger.error(`Error updating dock: ${error}`);
-    throw error;
-  }
-}, {
-  params: t.Object({
-    id: t.Numeric(),
-  }),
-  body: t.Object({
-    status: t.String(),
+  }, {
+    params: t.Object({
+      id: t.Numeric(),
+    }),
+    body: t.Object({
+      status: t.String(),
+    })
   })
-<<<<<<< HEAD
-})
-.ws("/ws", {
-  open: async (ws: WebSocket) => {
-    try {
-      if (!await manager.connect(ws)) {
-        ws.close(1013, "Maximum connections reached");
-        return;
-      }
-      await manager.sendFullSync(ws);
-    } catch (error) {
-      logger.error(`Error in WebSocket open handler: ${error}`);
-      ws.close(1011, "Unexpected error occurred");
-    }
-  },
-  message: (ws: WebSocket, message: string | ArrayBuffer) => {
-    try {
-=======
   .ws("/ws", {
-    open: async (ws) => {
-      console.log('ws - open', ws);
-      if (await manager.connect(ws)) {
+    open: (ws) => {
+      if (manager.connect(ws)) {
         manager.sendFullSync(ws);
       } else {
         ws.close(1013, "Maximum connections reached");
       }
     },
     message: (ws, message) => {
-      console.log('ws - message', ws)
->>>>>>> deploy-test-2
-      const data = JSON.parse(message as string);
-      if (data.type === "ping") {
-        ws.send(JSON.stringify({ type: "pong" }));
-      } else if (data.type === "request_full_sync") {
-        manager.sendFullSync(ws);
+      try {
+        const data = JSON.parse(message as string);
+        if (data.type === "ping") {
+          ws.send(JSON.stringify({ type: "pong" }));
+        } else if (data.type === "request_full_sync") {
+          manager.sendFullSync(ws);
+        }
+      } catch (error) {
+        logger.error(`Error processing WebSocket message: ${error}`);
       }
-    } catch (error) {
-      logger.error(`Error processing WebSocket message: ${error}`);
-    }
-  },
-  close: (ws: WebSocket) => {
-    manager.disconnect(ws);
-  },
-})
-.get("/api/debug", () => ({ status: "OK", message: "API is running" }))
-.listen(3001);
+    },
+    close: (ws) => {
+      manager.disconnect(ws);
+    },
+  })
+  .get("/api/debug", () => ({ status: "OK", message: "API is running" }))
+  .listen(3001);
 
 console.log(
   `🦊 Elysia is running at ${app.server?.hostname}:${app.server?.port}`
