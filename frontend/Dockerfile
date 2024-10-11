@@ -19,10 +19,6 @@ COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/.next ./.next
 COPY --from=build /app/next.config.* ./
 
-
-# Copy public directory if it exists
-COPY --from=build /app/public ./public 2>/dev/null || :
-
 EXPOSE 3000
 
 CMD ["npm", "start"]
