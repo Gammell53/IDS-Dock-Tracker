@@ -25,9 +25,10 @@ try {
 }
 
 // Secret key to sign JWT tokens
-const SECRET_KEY = process.env.SECRET_KEY || "your_secret_key_here";
-if (SECRET_KEY === "your_secret_key_here") {
-  logger.warn("Using default SECRET_KEY. This is not secure for production.");
+const SECRET_KEY = process.env.SECRET_KEY;
+if (!SECRET_KEY) {
+  logger.error("SECRET_KEY is not set. Please set it in the environment variables.");
+  process.exit(1);
 }
 
 const ACCESS_TOKEN_EXPIRE_MINUTES = 10080;  // 7 days * 24 hours * 60 mins
@@ -133,6 +134,18 @@ const manager = new ConnectionManager();
 async function initDb() {
   try {
     const conn = await dbPool.getConnection();
+    
+    // Create the docks table if it doesn't exist
+    conn.exec(`
+      CREATE TABLE IF NOT EXISTS docks (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        location TEXT NOT NULL,
+        number INTEGER NOT NULL,
+        status TEXT NOT NULL,
+        name TEXT
+      )
+    `);
+
     const existingDocks = conn.query("SELECT COUNT(*) as count FROM docks").get() as { count: number };
     if (existingDocks.count === 0) {
       logger.info("No existing docks found. Initializing docks...");
@@ -159,6 +172,13 @@ async function initDb() {
   }
 }
 
+// Make sure to call initDb() when the application starts
+initDb().then(() => {
+  console.log("Database initialized");
+}).catch((error) => {
+  console.error("Failed to initialize database:", error);
+});
+
 // Elysia app
 const app = new Elysia()
   .use(cors({
@@ -166,7 +186,7 @@ const app = new Elysia()
       logger.info(`Received request with origin: ${JSON.stringify(origin)}`);
       if (origin === null || origin === undefined) {
         logger.warn('Origin is null or undefined');
-        return false;
+        return true; // Allow requests with no origin (like mobile apps or curl requests)
       }
       if (typeof origin !== 'string') {
         logger.warn(`Origin is not a string: ${typeof origin}`);
@@ -226,7 +246,7 @@ app.post("/api/token", async ({ body, jwt }) => {
   } catch (error) {
     logger.error(`Error fetching docks: ${error}`);
     set.status = 500;
-    return { error: "Internal server error" };
+    return { error: "Internal server error", details: error.message };
   }
 })
 .put("/api/docks/:id", async ({ params, body, jwt }) => {
@@ -262,12 +282,17 @@ app.post("/api/token", async ({ body, jwt }) => {
   })
 })
 .ws("/ws", {
-  open: (ws) => {
-    if (!manager.connect(ws)) {
-      ws.close(1013, "Maximum connections reached");
-      return;
+  open: async (ws) => {
+    try {
+      if (!await manager.connect(ws)) {
+        ws.close(1013, "Maximum connections reached");
+        return;
+      }
+      await manager.sendFullSync(ws);
+    } catch (error) {
+      logger.error(`Error in WebSocket open handler: ${error}`);
+      ws.close(1011, "Unexpected error occurred");
     }
-    manager.sendFullSync(ws);
   },
   message: (ws, message) => {
     try {
