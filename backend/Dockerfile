@@ -3,6 +3,9 @@ FROM oven/bun:1 AS build
 
 WORKDIR /app
 
+# Check Bun version
+RUN bun --version
+
 # Install build dependencies
 RUN apt-get update && apt-get install -y \
     python3 \
@@ -11,10 +14,14 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 COPY package*.json ./
-RUN bun install
+RUN bun install --verbose
 
 COPY . .
+RUN ls -la
 RUN bun run build
+
+# After RUN bun run build
+RUN ls -la dist
 
 # Production stage
 FROM oven/bun:1
