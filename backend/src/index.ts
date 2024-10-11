@@ -2,7 +2,7 @@ import { Elysia, t } from "elysia";
 import { cors } from "@elysiajs/cors";
 import { jwt } from "@elysiajs/jwt";
 import { swagger } from "@elysiajs/swagger";
-import Database from "better-sqlite3";
+import { Database } from "bun:sqlite";
 import { config } from "dotenv";
 
 // Load environment variables
@@ -24,27 +24,8 @@ if (!SECRET_KEY) {
 
 const ACCESS_TOKEN_EXPIRE_MINUTES = 10080;  // 7 days * 24 hours * 60 mins
 
-// Database setup with connection pooling
-class DatabasePool {
-  private pool: Database[];
-  private maxConnections: number;
-
-  constructor(dbPath: string, maxConnections: number) {
-    this.maxConnections = maxConnections;
-    this.pool = Array.from({ length: maxConnections }, () => {
-      const db = new Database(dbPath);
-      db.pragma('journal_mode = WAL');
-      db.pragma('synchronous = NORMAL');
-      return db;
-    });
-  }
-
-  getConnection(): Database {
-    return this.pool[Math.floor(Math.random() * this.maxConnections)];
-  }
-}
-
-const dbPool = new DatabasePool("docks.db", 10);
+// Database setup
+const db = new Database("docks.db");
 
 // Simple in-memory cache
 class SimpleCache {
@@ -111,47 +92,41 @@ const manager = new ConnectionManager();
 
 // Initialize database
 async function initDb() {
-  const db = dbPool.getConnection();
-  try {
-    db.exec(`
-      CREATE TABLE IF NOT EXISTS docks (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        location TEXT NOT NULL,
-        number INTEGER NOT NULL,
-        status TEXT NOT NULL,
-        name TEXT
-      )
-    `);
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS docks (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      location TEXT NOT NULL,
+      number INTEGER NOT NULL,
+      status TEXT NOT NULL,
+      name TEXT
+    )
+  `);
 
-    const existingDocks = db.prepare("SELECT COUNT(*) as count FROM docks").get() as { count: number };
-    if (existingDocks.count === 0) {
-      logger.info("No existing docks found. Initializing docks...");
-      const southeastDocks = Array.from({ length: 13 }, (_, i) => 
-        ({ location: 'southeast', number: i + 1, status: 'available' })
-      );
-      const southwestDockNames = ['H84', 'H86', 'H87', 'H89', 'H90', 'H92', 'H93', 'H95', 'H96', 'H98', 'H99'];
-      const southwestDocks = southwestDockNames.map((name, i) => 
-        ({ location: 'southwest', number: i + 1, status: 'available', name: name })
-      );
-      
-      const stmt = db.prepare("INSERT INTO docks (location, number, status, name) VALUES (?, ?, ?, ?)");
-      db.transaction(() => {
-        [...southeastDocks, ...southwestDocks].forEach(dock => {
-          stmt.run(dock.location, dock.number, dock.status, dock.name);
-        });
-      })();
-      logger.info(`Initialized ${southeastDocks.length + southwestDocks.length} docks.`);
-    } else {
-      logger.info(`Found ${existingDocks.count} existing docks in the database.`);
-    }
-  } catch (error) {
-    logger.error(`Error initializing database: ${error}`);
+  const existingDocks = db.query("SELECT COUNT(*) as count FROM docks").get() as { count: number };
+  if (existingDocks.count === 0) {
+    logger.info("No existing docks found. Initializing docks...");
+    const southeastDocks = Array.from({ length: 13 }, (_, i) => 
+      ({ location: 'southeast', number: i + 1, status: 'available' })
+    );
+    const southwestDockNames = ['H84', 'H86', 'H87', 'H89', 'H90', 'H92', 'H93', 'H95', 'H96', 'H98', 'H99'];
+    const southwestDocks = southwestDockNames.map((name, i) => 
+      ({ location: 'southwest', number: i + 1, status: 'available', name: name })
+    );
+    
+    const stmt = db.prepare("INSERT INTO docks (location, number, status, name) VALUES (?, ?, ?, ?)");
+    db.transaction(() => {
+      [...southeastDocks, ...southwestDocks].forEach(dock => {
+        stmt.run(dock.location, dock.number, dock.status, dock.name);
+      });
+    })();
+    logger.info(`Initialized ${southeastDocks.length + southwestDocks.length} docks.`);
+  } else {
+    logger.info(`Found ${existingDocks.count} existing docks in the database.`);
   }
 }
 
 async function fetchAllDocks() {
-  const db = dbPool.getConnection();
-  const docks = db.prepare("SELECT * FROM docks").all();
+  const docks = db.query("SELECT * FROM docks").all();
   cache.set('all_docks', docks, 60); // Cache for 60 seconds
   return docks;
 }
@@ -211,18 +186,19 @@ const app = new Elysia()
       const cachedDocks = cache.get('all_docks');
       if (cachedDocks) return cachedDocks;
 
-      return await fetchAllDocks();
+      const docks = db.query("SELECT * FROM docks").all();
+      cache.set('all_docks', docks, 60); // Cache for 60 seconds
+      return docks;
     } catch (error) {
       logger.error(`Error fetching docks: ${error}`);
       set.status = 500;
-      return { error: "Internal server error" };
+      return { error: "Internal server error", details: (error as Error).message };
     }
   })
   .put("/api/docks/:id", async ({ params, body, jwt }) => {
     const { id } = params;
     const { status } = body;
     
-    const db = dbPool.getConnection();
     const result = db.transaction(() => {
       return db.prepare("UPDATE docks SET status = ? WHERE id = ? RETURNING *")
         .get(status, id);
