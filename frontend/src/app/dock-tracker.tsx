@@ -61,7 +61,7 @@ export default function DockTracker() {
 
   useEffect(() => {
     console.log('Setting up WebSocket connection');
-    const ws = setupWebSocket();
+    const ws = setupWebSocket(setDocks);
 
     return () => {
       console.log('Closing WebSocket connection');
@@ -243,7 +243,7 @@ export default function DockTracker() {
   )
 }
 
-function setupWebSocket() {
+function setupWebSocket(setDocks: React.Dispatch<React.SetStateAction<Dock[]>>) {
   const ws = new WebSocket(WS_URL);
 
   ws.onopen = () => {
@@ -281,7 +281,7 @@ function setupWebSocket() {
   ws.onclose = () => {
     console.log('WebSocket connection closed. Reconnecting...');
     setTimeout(() => {
-      setupWebSocket();
+      setupWebSocket(setDocks);
     }, 5000);
   };
 
