@@ -4,7 +4,11 @@ FROM oven/bun:1 as build
 WORKDIR /app
 
 # Install build dependencies
-RUN apk add --no-cache python3 make g++
+RUN apt-get update && apt-get install -y \
+    python3 \
+    make \
+    g++ \
+    && rm -rf /var/lib/apt/lists/*
 
 COPY package*.json ./
 RUN bun install
@@ -18,7 +22,9 @@ FROM oven/bun:1
 WORKDIR /app
 
 # Install runtime dependencies
-RUN apk add --no-cache libstdc++
+RUN apt-get update && apt-get install -y \
+    libstdc++ \
+    && rm -rf /var/lib/apt/lists/*
 
 COPY --from=build /app/dist ./dist
 COPY package*.json ./
