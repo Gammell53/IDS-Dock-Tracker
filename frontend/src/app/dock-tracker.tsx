@@ -93,6 +93,9 @@ export default function DockTracker() {
         } else if (jsonData.type === 'full_sync') {
           console.log('Processing full_sync event:', jsonData.docks);
           setDocks(jsonData.docks.map(dock => ({...dock, name: getDockName(dock)})));
+        } else if (jsonData.type === 'heartbeat') {
+          console.log('Received heartbeat, sending acknowledgement');
+          ws.send(JSON.stringify({ type: "heartbeat-ack" }));
         }
       } catch (error) {
         console.error('Error processing WebSocket message:', error);

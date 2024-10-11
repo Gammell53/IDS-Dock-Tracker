@@ -57,17 +57,46 @@ const cache = new SimpleCache();
 class ConnectionManager {
   private connections: Set<WebSocket> = new Set();
   private MAX_CONNECTIONS = 1000; // Increased max connections
+  private HEARTBEAT_INTERVAL = 30000; // 30 seconds
+  private HEARTBEAT_TIMEOUT = 5000; // 5 seconds
 
   connect(ws: WebSocket): boolean {
     if (this.connections.size >= this.MAX_CONNECTIONS) {
       return false;
     }
     this.connections.add(ws);
+    this.setupHeartbeat(ws);
     return true;
   }
 
   disconnect(ws: WebSocket) {
     this.connections.delete(ws);
+    // @ts-ignore
+    clearInterval(ws.heartbeatInterval);
+    // @ts-ignore
+    clearTimeout(ws.heartbeatTimeout);
+  }
+
+  private setupHeartbeat(ws: WebSocket) {
+    // @ts-ignore
+    ws.isAlive = true;
+    // @ts-ignore
+    ws.heartbeatInterval = setInterval(() => {
+      if (// @ts-ignore
+          !ws.isAlive) {
+        logger.warn("WebSocket connection is not alive, terminating");
+        ws.terminate();
+        return;
+      }
+      // @ts-ignore
+      ws.isAlive = false;
+      ws.send(JSON.stringify({ type: "heartbeat" }));
+      // @ts-ignore
+      ws.heartbeatTimeout = setTimeout(() => {
+        logger.warn("WebSocket heartbeat timeout, terminating connection");
+        ws.terminate();
+      }, this.HEARTBEAT_TIMEOUT);
+    }, this.HEARTBEAT_INTERVAL);
   }
 
   broadcast(message: string) {
@@ -291,6 +320,11 @@ const app = new Elysia()
         const data = JSON.parse(message as string);
         if (data.type === "ping") {
           ws.send(JSON.stringify({ type: "pong" }));
+        } else if (data.type === "heartbeat-ack") {
+          // @ts-ignore
+          ws.isAlive = true;
+          // @ts-ignore
+          clearTimeout(ws.heartbeatTimeout);
         } else if (data.type === "request_full_sync") {
           logger.info("Received request for full sync");
           manager.sendFullSync(ws);
