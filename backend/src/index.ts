@@ -71,10 +71,9 @@ class ConnectionManager {
   }
 
   broadcast(message: string) {
-    const messageBuffer = Buffer.from(message);
     for (const ws of this.connections) {
       try {
-        ws.send(messageBuffer);
+        ws.send(message);
       } catch (error) {
         logger.error(`Error broadcasting message: ${error}`);
         this.disconnect(ws);

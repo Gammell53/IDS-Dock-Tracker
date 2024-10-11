@@ -61,25 +61,35 @@ export default function DockTracker() {
 
   useEffect(() => {
     console.log('Setting up WebSocket connection');
-    const ws = new WebSocket(WS_URL);
+    const ws = setupWebSocket();
 
     ws.onopen = () => {
       console.log('WebSocket connection opened');
     };
 
-    ws.onmessage = (event) => {
-      console.log('Received WebSocket message:', event.data);
-      const data = JSON.parse(event.data);
-      if (data.type === 'dock_updated') {
-        console.log('Processing dock_updated event:', data.data);
-        setDocks(prevDocks => 
-          prevDocks.map(dock => 
-            dock.id === data.data.id ? {...data.data, name: getDockName(data.data)} : dock
-          )
-        );
-      } else if (data.type === 'full_sync') {
-        console.log('Processing full_sync event:', data.docks);
-        setDocks(data.docks.map(dock => ({...dock, name: getDockName(dock)})));
+    ws.onmessage = async (event) => {
+      try {
+        console.log('Received WebSocket message:', event.data);
+        let jsonData;
+        if (event.data instanceof Blob) {
+          const text = await event.data.text();
+          jsonData = JSON.parse(text);
+        } else {
+          jsonData = JSON.parse(event.data);
+        }
+        if (jsonData.type === 'dock_updated') {
+          console.log('Processing dock_updated event:', jsonData.data);
+          setDocks(prevDocks => 
+            prevDocks.map(dock => 
+              dock.id === jsonData.data.id ? {...jsonData.data, name: getDockName(jsonData.data)} : dock
+            )
+          );
+        } else if (jsonData.type === 'full_sync') {
+          console.log('Processing full_sync event:', jsonData.docks);
+          setDocks(jsonData.docks.map(dock => ({...dock, name: getDockName(dock)})));
+        }
+      } catch (error) {
+        console.error('Error processing WebSocket message:', error);
       }
     };
 
@@ -88,7 +98,8 @@ export default function DockTracker() {
     };
 
     ws.onclose = () => {
-      console.log('WebSocket connection closed');
+      console.log('WebSocket connection closed. Reconnecting...');
+      setTimeout(setupWebSocket, 5000);
     };
 
     return () => {
@@ -274,4 +285,21 @@ export default function DockTracker() {
       </div>
     </div>
   )
+}
+
+function setupWebSocket() {
+  const ws = new WebSocket(WS_URL);
+
+  ws.onopen = () => {
+    console.log('WebSocket connection opened');
+  };
+
+  // ... other event handlers
+
+  ws.onclose = () => {
+    console.log('WebSocket connection closed. Reconnecting...');
+    setTimeout(setupWebSocket, 5000);
+  };
+
+  return ws;
 }
