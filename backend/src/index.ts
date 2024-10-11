@@ -4,6 +4,7 @@ import { jwt } from "@elysiajs/jwt";
 import { swagger } from "@elysiajs/swagger";
 import { Database } from "bun:sqlite";
 import { config } from "dotenv";
+import { rateLimit } from '@elysiajs/rate-limit';
 
 // Load environment variables
 config();
@@ -55,9 +56,14 @@ interface User {
 // WebSocket connections store
 class ConnectionManager {
   private connections: Set<WebSocket> = new Set();
+  private MAX_CONNECTIONS = 100; // Adjust as needed
 
-  async connect(ws: WebSocket) {
+  async connect(ws: WebSocket): Promise<boolean> {
+    if (this.connections.size >= this.MAX_CONNECTIONS) {
+      return false;
+    }
     this.connections.add(ws);
+    return true;
   }
 
   disconnect(ws: WebSocket) {
@@ -66,8 +72,12 @@ class ConnectionManager {
 
   async broadcast(message: string) {
     for (const ws of this.connections) {
-      console.log('broadcasting message - ', message)
-      ws.send(message);
+      try {
+        ws.send(message);
+      } catch (error) {
+        logger.error(`Error broadcasting message: ${error}`);
+        this.disconnect(ws);
+      }
     }
   }
 
@@ -133,6 +143,10 @@ const app = new Elysia()
     name: 'jwt',
     secret: SECRET_KEY,
   }))
+  .use(rateLimit({
+    duration: 60000, // 1 minute
+    max: 100 // max 100 requests per minute
+  }))
   .onStart(() => {
     initDb();
     logger.info("Application startup: Database initialized");
@@ -159,7 +173,12 @@ const app = new Elysia()
   })
   .get("/api/docks", async ({ set }) => {
     try {
-      const docks = db.query("SELECT * FROM docks").all();
+      const cachedDocks = await cache.get('all_docks');
+      if (cachedDocks) return cachedDocks;
+
+      const conn = await dbPool.getConnection();
+      const docks = conn.query("SELECT * FROM docks").all();
+      await cache.set('all_docks', docks, 60); // Cache for 60 seconds
       return docks;
     } catch (error) {
       console.error("Error fetching docks:", error);
@@ -197,10 +216,13 @@ const app = new Elysia()
     })
   })
   .ws("/ws", {
-    open: (ws) => {
-      console.log('ws - open', ws)
-      manager.connect(ws);
-      manager.sendFullSync(ws);
+    open: async (ws) => {
+      console.log('ws - open', ws);
+      if (await manager.connect(ws)) {
+        manager.sendFullSync(ws);
+      } else {
+        ws.close(1013, "Maximum connections reached");
+      }
     },
     message: (ws, message) => {
       console.log('ws - message', ws)
