@@ -2,7 +2,7 @@ import { Elysia, t } from "elysia";
 import { cors } from "@elysiajs/cors";
 import { jwt } from "@elysiajs/jwt";
 import { swagger } from "@elysiajs/swagger";
-import { Database } from "bun:sqlite";
+import Database from "better-sqlite3";
 import { config } from "dotenv";
 
 // Load environment variables
@@ -93,7 +93,7 @@ class ConnectionManager {
 
   async sendFullSync(ws: WebSocket) {
     try {
-      const docks = db.query("SELECT * FROM docks").all() as Dock[];
+      const docks = db.prepare("SELECT * FROM docks").all() as Dock[];
       ws.send(JSON.stringify({
         type: "full_sync",
         docks: docks
@@ -119,7 +119,7 @@ async function initDb() {
       )
     `);
 
-    const existingDocks = db.query("SELECT COUNT(*) as count FROM docks").get() as { count: number };
+    const existingDocks = db.prepare("SELECT COUNT(*) as count FROM docks").get() as { count: number };
     if (existingDocks.count === 0) {
       logger.info("No existing docks found. Initializing docks...");
       const southeastDocks = Array.from({ length: 13 }, (_, i) => 
@@ -204,7 +204,7 @@ app.post("/api/token", async ({ body, jwt }: { body: any, jwt: any }) => {
     const cachedDocks = await cache.get('all_docks');
     if (cachedDocks) return cachedDocks;
 
-    const docks = db.query("SELECT * FROM docks").all();
+    const docks = db.prepare("SELECT * FROM docks").all();
     await cache.set('all_docks', docks, 60); // Cache for 60 seconds
     return docks;
   } catch (error) {
@@ -218,7 +218,7 @@ app.post("/api/token", async ({ body, jwt }: { body: any, jwt: any }) => {
     const { id } = params;
     const { status } = body;
     
-    const result = db.query("UPDATE docks SET status = ? WHERE id = ? RETURNING *")
+    const result = db.prepare("UPDATE docks SET status = ? WHERE id = ? RETURNING *")
       .get(status, id) as Dock | undefined;
     
     if (!result) throw new Error("Dock not found");
