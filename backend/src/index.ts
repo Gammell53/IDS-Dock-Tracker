@@ -92,6 +92,19 @@ class ConnectionManager {
       logger.error(`Error sending full sync: ${error}`);
     }
   }
+
+  async broadcastFullSync() {
+    try {
+      const docks = await fetchAllDocks();
+      const message = JSON.stringify({
+        type: "full_sync",
+        docks: docks
+      });
+      this.broadcast(message);
+    } catch (error) {
+      logger.error(`Error broadcasting full sync: ${error}`);
+    }
+  }
 }
 
 const manager = new ConnectionManager();
@@ -246,6 +259,9 @@ const app = new Elysia()
               
               manager.broadcast(updateMessage);
               cache.set('all_docks', null, 0); // Invalidate cache
+              
+              // Broadcast a full sync to ensure all clients are up-to-date
+              manager.broadcastFullSync();
               
               resolve(row);
             }
