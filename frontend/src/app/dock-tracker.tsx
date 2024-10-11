@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useMemo, useCallback } from 'react'
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { PlaneLanding, PlaneIcon, AlertTriangle, Snowflake, Loader, RefreshCw } from 'lucide-react'
 
 type DockStatus = 'available' | 'occupied' | 'out-of-service' | 'deiced'
@@ -26,6 +26,8 @@ export default function DockTracker() {
   const [statusFilter, setStatusFilter] = useState<DockStatus | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const wsRef = useRef<WebSocket | null>(null)
+  const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null)
 
   console.log('DockTracker rendering, loading:', loading, 'docks:', docks);
 
@@ -59,17 +61,83 @@ export default function DockTracker() {
     }
   }, []);
 
-  useEffect(() => {
-    console.log('Setting up WebSocket connection');
-    const ws = setupWebSocket(setDocks);
+  const setupWebSocket = useCallback(() => {
+    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+      return;
+    }
 
-    return () => {
-      console.log('Closing WebSocket connection');
-      if (ws) {
-        ws.close();
+    const ws = new WebSocket(WS_URL);
+
+    ws.onopen = () => {
+      console.log('WebSocket connection opened');
+      ws.send(JSON.stringify({ type: "request_full_sync" }));
+    };
+
+    ws.onmessage = async (event) => {
+      try {
+        console.log('Received WebSocket message:', event.data);
+        let jsonData;
+        if (event.data instanceof Blob) {
+          const text = await event.data.text();
+          jsonData = JSON.parse(text);
+        } else {
+          jsonData = JSON.parse(event.data);
+        }
+        if (jsonData.type === 'dock_updated') {
+          console.log('Processing dock_updated event:', jsonData.data);
+          setDocks(prevDocks => 
+            prevDocks.map(dock => 
+              dock.id === jsonData.data.id ? {...jsonData.data, name: getDockName(jsonData.data)} : dock
+            )
+          );
+        } else if (jsonData.type === 'full_sync') {
+          console.log('Processing full_sync event:', jsonData.docks);
+          setDocks(jsonData.docks.map(dock => ({...dock, name: getDockName(dock)})));
+        }
+      } catch (error) {
+        console.error('Error processing WebSocket message:', error);
       }
     };
+
+    ws.onclose = () => {
+      console.log('WebSocket connection closed. Reconnecting...');
+      wsRef.current = null;
+      if (reconnectTimeoutRef.current) {
+        clearTimeout(reconnectTimeoutRef.current);
+      }
+      reconnectTimeoutRef.current = setTimeout(() => {
+        setupWebSocket();
+      }, 5000);
+    };
+
+    wsRef.current = ws;
   }, []);
+
+  useEffect(() => {
+    console.log('Setting up WebSocket connection');
+    setupWebSocket();
+
+    // Set up visibility change listener
+    const handleVisibilityChange = () => {
+      if (!document.hidden && (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN)) {
+        console.log('Page became visible, reconnecting WebSocket');
+        setupWebSocket();
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      console.log('Cleaning up WebSocket connection');
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      if (wsRef.current) {
+        wsRef.current.close();
+      }
+      if (reconnectTimeoutRef.current) {
+        clearTimeout(reconnectTimeoutRef.current);
+      }
+    };
+  }, [setupWebSocket]);
 
   const updateDockStatus = async (id: number, status: DockStatus) => {
     try {
@@ -98,6 +166,11 @@ export default function DockTracker() {
       }
 
       console.log(`Successfully updated dock ${id} to status ${status}`);
+      
+      // Request a full sync after successful update
+      if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+        wsRef.current.send(JSON.stringify({ type: "request_full_sync" }));
+      }
     } catch (error) {
       console.error('Error updating dock status:', error)
       // Revert the optimistic update
@@ -241,51 +314,6 @@ export default function DockTracker() {
       </div>
     </div>
   )
-}
-
-function setupWebSocket(setDocks: React.Dispatch<React.SetStateAction<Dock[]>>) {
-  const ws = new WebSocket(WS_URL);
-
-  ws.onopen = () => {
-    console.log('WebSocket connection opened');
-    // Request a full sync when the connection is established or re-established
-    ws.send(JSON.stringify({ type: "request_full_sync" }));
-  };
-
-  ws.onmessage = async (event) => {
-    try {
-      console.log('Received WebSocket message:', event.data);
-      let jsonData;
-      if (event.data instanceof Blob) {
-        const text = await event.data.text();
-        jsonData = JSON.parse(text);
-      } else {
-        jsonData = JSON.parse(event.data);
-      }
-      if (jsonData.type === 'dock_updated') {
-        console.log('Processing dock_updated event:', jsonData.data);
-        setDocks(prevDocks => 
-          prevDocks.map(dock => 
-            dock.id === jsonData.data.id ? {...jsonData.data, name: getDockName(jsonData.data)} : dock
-          )
-        );
-      } else if (jsonData.type === 'full_sync') {
-        console.log('Processing full_sync event:', jsonData.docks);
-        setDocks(jsonData.docks.map(dock => ({...dock, name: getDockName(dock)})));
-      }
-    } catch (error) {
-      console.error('Error processing WebSocket message:', error);
-    }
-  };
-
-  ws.onclose = () => {
-    console.log('WebSocket connection closed. Reconnecting...');
-    setTimeout(() => {
-      setupWebSocket(setDocks);
-    }, 5000);
-  };
-
-  return ws;
 }
 
 function getDockName(dock: Dock) {
