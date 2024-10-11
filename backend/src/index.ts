@@ -1,3 +1,10 @@
+import { dirname } from 'path';
+import { fileURLToPath } from 'url';
+
+// Add this at the top of your file
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+
 import { Elysia, t } from "elysia";
 import { cors } from "@elysiajs/cors";
 import { jwt } from "@elysiajs/jwt";

@@ -29,6 +29,7 @@ FROM oven/bun:1
 WORKDIR /app
 
 COPY --from=build /app/dist ./dist
+COPY --from=build /app/src ./src
 COPY package*.json ./
 
 # Install production dependencies
@@ -41,4 +42,4 @@ RUN apt-get update && apt-get install -y \
 
 EXPOSE 3001
 
-CMD ["bun", "dist/index.js"]
+CMD ["bun", "run", "src/index.ts"]

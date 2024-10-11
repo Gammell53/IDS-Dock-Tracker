@@ -4,7 +4,7 @@
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "dev": "bun run --watch src/index.ts",
-    "build": "echo 'Starting build' && bun build ./src/index.ts --outdir ./dist && echo 'Build completed'",
+    "build": "echo 'Starting build' && bun build ./src/index.ts --outdir ./dist --target=node && echo 'Build completed'",
     "start": "bun run dist/index.js"
   },
   "dependencies": {
