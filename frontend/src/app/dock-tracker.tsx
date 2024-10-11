@@ -26,7 +26,6 @@ export default function DockTracker() {
   const [statusFilter, setStatusFilter] = useState<DockStatus | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [ws, setWs] = useState<WebSocket | null>(null)
 
   console.log('DockTracker rendering, loading:', loading, 'docks:', docks);
 
@@ -62,23 +61,15 @@ export default function DockTracker() {
 
   useEffect(() => {
     console.log('Setting up WebSocket connection');
-    const newWs = setupWebSocket();
-    setWs(newWs);
+    const ws = setupWebSocket();
 
     return () => {
       console.log('Closing WebSocket connection');
-      if (newWs) {
-        newWs.close();
+      if (ws) {
+        ws.close();
       }
     };
   }, []);
-
-  const getDockName = (dock: Dock) => {
-    if (dock.location === 'southwest') {
-      return southwestDockNames[dock.number - 1] || `Unknown SW Dock ${dock.number}`
-    }
-    return `Dock ${dock.number}`
-  }
 
   const updateDockStatus = async (id: number, status: DockStatus) => {
     try {
@@ -290,11 +281,16 @@ function setupWebSocket() {
   ws.onclose = () => {
     console.log('WebSocket connection closed. Reconnecting...');
     setTimeout(() => {
-      const newWs = setupWebSocket();
-      // Update the WebSocket reference in the component
-      setWs(newWs);
+      setupWebSocket();
     }, 5000);
   };
 
   return ws;
+}
+
+function getDockName(dock: Dock) {
+  if (dock.location === 'southwest') {
+    return southwestDockNames[dock.number - 1] || `Unknown SW Dock ${dock.number}`
+  }
+  return `Dock ${dock.number}`
 }

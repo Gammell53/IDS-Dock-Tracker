@@ -7,7 +7,6 @@ COPY package*.json ./
 RUN npm ci --no-audit
 
 COPY . .
-# Remove the bun command
 RUN npm run build
 
 # Production stage
@@ -18,7 +17,7 @@ WORKDIR /app
 COPY --from=build /app/package*.json ./
 COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/.next ./.next
-# COPY --from=build /app/public ./public
+COPY --from=build /app/public ./public
 COPY --from=build /app/next.config.* ./
 
 
