@@ -4,6 +4,7 @@ import { jwt } from "@elysiajs/jwt";
 import { swagger } from "@elysiajs/swagger";
 import { Database } from "bun:sqlite";
 import { config } from "dotenv";
+import { rateLimit } from '@elysiajs/rate-limit';
 
 // Load environment variables
 config();
@@ -23,17 +24,41 @@ if (SECRET_KEY === "your_secret_key_here") {
 
 const ACCESS_TOKEN_EXPIRE_MINUTES = 10080;  // 7 days * 24 hours * 60 mins
 
-// Database setup
-const db = new Database("docks.db");
-db.exec(`
-  CREATE TABLE IF NOT EXISTS docks (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    location TEXT,
-    number INTEGER,
-    status TEXT,
-    name TEXT
-  )
-`);
+// Database setup with connection pooling
+class DatabasePool {
+  private pool: Database[];
+  private maxConnections: number;
+
+  constructor(dbPath: string, maxConnections: number) {
+    this.maxConnections = maxConnections;
+    this.pool = Array.from({ length: maxConnections }, () => new Database(dbPath));
+  }
+
+  async getConnection(): Promise<Database> {
+    return this.pool[Math.floor(Math.random() * this.maxConnections)];
+  }
+}
+
+const dbPool = new DatabasePool("docks.db", 10);
+
+// Simple in-memory cache
+class SimpleCache {
+  private cache: Map<string, { data: any; expiry: number }> = new Map();
+
+  async get(key: string): Promise<any | null> {
+    const item = this.cache.get(key);
+    if (item && item.expiry > Date.now()) {
+      return item.data;
+    }
+    return null;
+  }
+
+  async set(key: string, data: any, ttlSeconds: number): Promise<void> {
+    this.cache.set(key, { data, expiry: Date.now() + ttlSeconds * 1000 });
+  }
+}
+
+const cache = new SimpleCache();
 
 // Models
 interface Dock {
@@ -55,9 +80,14 @@ interface User {
 // WebSocket connections store
 class ConnectionManager {
   private connections: Set<WebSocket> = new Set();
+  private MAX_CONNECTIONS = 100;
 
-  async connect(ws: WebSocket) {
+  async connect(ws: WebSocket): Promise<boolean> {
+    if (this.connections.size >= this.MAX_CONNECTIONS) {
+      return false;
+    }
     this.connections.add(ws);
+    return true;
   }
 
   disconnect(ws: WebSocket) {
@@ -66,44 +96,58 @@ class ConnectionManager {
 
   async broadcast(message: string) {
     for (const ws of this.connections) {
-      console.log('broadcasting message - ', message)
-      ws.send(message);
+      try {
+        ws.send(message);
+      } catch (error) {
+        logger.error(`Error broadcasting message: ${error}`);
+        this.disconnect(ws);
+      }
     }
   }
 
   async sendFullSync(ws: WebSocket) {
-    const docks = db.query("SELECT * FROM docks").all() as Dock[];
-    ws.send(JSON.stringify({
-      type: "full_sync",
-      docks: docks
-    }));
+    try {
+      const conn = await dbPool.getConnection();
+      const docks = conn.query("SELECT * FROM docks").all() as Dock[];
+      ws.send(JSON.stringify({
+        type: "full_sync",
+        docks: docks
+      }));
+    } catch (error) {
+      logger.error(`Error sending full sync: ${error}`);
+    }
   }
 }
 
 const manager = new ConnectionManager();
 
 // Initialize database
-function initDb() {
-  const existingDocks = db.query("SELECT COUNT(*) as count FROM docks").get() as { count: number };
-  if (existingDocks.count === 0) {
-    logger.info("No existing docks found. Initializing docks...");
-    const southeastDocks = Array.from({ length: 13 }, (_, i) => 
-      ({ location: 'southeast', number: i + 1, status: 'available' })
-    );
-    const southwestDockNames = ['H84', 'H86', 'H87', 'H89', 'H90', 'H92', 'H93', 'H95', 'H96', 'H98', 'H99'];
-    const southwestDocks = southwestDockNames.map((name, i) => 
-      ({ location: 'southwest', number: i + 1, status: 'available', name: name })
-    );
-    
-    const stmt = db.prepare("INSERT INTO docks (location, number, status, name) VALUES (?, ?, ?, ?)");
-    db.transaction(() => {
-      [...southeastDocks, ...southwestDocks].forEach(dock => {
-        stmt.run(dock.location, dock.number, dock.status, dock.name);
-      });
-    })();
-    logger.info(`Initialized ${southeastDocks.length + southwestDocks.length} docks.`);
-  } else {
-    logger.info(`Found ${existingDocks.count} existing docks in the database.`);
+async function initDb() {
+  try {
+    const conn = await dbPool.getConnection();
+    const existingDocks = conn.query("SELECT COUNT(*) as count FROM docks").get() as { count: number };
+    if (existingDocks.count === 0) {
+      logger.info("No existing docks found. Initializing docks...");
+      const southeastDocks = Array.from({ length: 13 }, (_, i) => 
+        ({ location: 'southeast', number: i + 1, status: 'available' })
+      );
+      const southwestDockNames = ['H84', 'H86', 'H87', 'H89', 'H90', 'H92', 'H93', 'H95', 'H96', 'H98', 'H99'];
+      const southwestDocks = southwestDockNames.map((name, i) => 
+        ({ location: 'southwest', number: i + 1, status: 'available', name: name })
+      );
+      
+      const stmt = conn.prepare("INSERT INTO docks (location, number, status, name) VALUES (?, ?, ?, ?)");
+      conn.transaction(() => {
+        [...southeastDocks, ...southwestDocks].forEach(dock => {
+          stmt.run(dock.location, dock.number, dock.status, dock.name);
+        });
+      })();
+      logger.info(`Initialized ${southeastDocks.length + southwestDocks.length} docks.`);
+    } else {
+      logger.info(`Found ${existingDocks.count} existing docks in the database.`);
+    }
+  } catch (error) {
+    logger.error(`Error initializing database: ${error}`);
   }
 }
 
@@ -133,6 +177,10 @@ const app = new Elysia()
     name: 'jwt',
     secret: SECRET_KEY,
   }))
+  .use(rateLimit({
+    duration: 15 * 60 * 1000, // 15 minutes
+    max: 100 // limit each IP to 100 requests per duration
+  }))
   .onStart(() => {
     initDb();
     logger.info("Application startup: Database initialized");
@@ -159,35 +207,43 @@ const app = new Elysia()
   })
   .get("/api/docks", async ({ set }) => {
     try {
-      const docks = db.query("SELECT * FROM docks").all();
+      const cachedDocks = await cache.get('all_docks');
+      if (cachedDocks) return cachedDocks;
+
+      const conn = await dbPool.getConnection();
+      const docks = conn.query("SELECT * FROM docks").all();
+      await cache.set('all_docks', docks, 60); // Cache for 60 seconds
       return docks;
     } catch (error) {
-      console.error("Error fetching docks:", error);
+      logger.error(`Error fetching docks: ${error}`);
       set.status = 500;
       return { error: "Internal server error" };
     }
   })
   .put("/api/docks/:id", async ({ params, body, jwt }) => {
-    // const payload = await jwt.verify();
-    // console.log('put payload - ', payload)
-    // if (!payload) throw new Error("Unauthorized");
-    
-    const { id } = params;
-    const { status } = body;
-    
-    const result = db.query("UPDATE docks SET status = ? WHERE id = ? RETURNING *")
-      .get(status, id) as Dock | undefined;
-    
-    if (!result) throw new Error("Dock not found");
-    
-    const updateMessage = JSON.stringify({
-      type: "dock_updated",
-      data: result
-    });
-    
-    await manager.broadcast(updateMessage);
-    
-    return result;
+    try {
+      const { id } = params;
+      const { status } = body;
+      
+      const conn = await dbPool.getConnection();
+      const result = conn.query("UPDATE docks SET status = ? WHERE id = ? RETURNING *")
+        .get(status, id) as Dock | undefined;
+      
+      if (!result) throw new Error("Dock not found");
+      
+      const updateMessage = JSON.stringify({
+        type: "dock_updated",
+        data: result
+      });
+      
+      await manager.broadcast(updateMessage);
+      await cache.set('all_docks', null, 0); // Invalidate cache
+      
+      return result;
+    } catch (error) {
+      logger.error(`Error updating dock: ${error}`);
+      throw error;
+    }
   }, {
     params: t.Object({
       id: t.Numeric(),
@@ -198,21 +254,25 @@ const app = new Elysia()
   })
   .ws("/ws", {
     open: (ws) => {
-      console.log('ws - open', ws)
-      manager.connect(ws);
+      if (!manager.connect(ws)) {
+        ws.close(1013, "Maximum connections reached");
+        return;
+      }
       manager.sendFullSync(ws);
     },
     message: (ws, message) => {
-      console.log('ws - message', ws)
-      const data = JSON.parse(message as string);
-      if (data.type === "ping") {
-        ws.send(JSON.stringify({ type: "pong" }));
-      } else if (data.type === "request_full_sync") {
-        manager.sendFullSync(ws);
+      try {
+        const data = JSON.parse(message as string);
+        if (data.type === "ping") {
+          ws.send(JSON.stringify({ type: "pong" }));
+        } else if (data.type === "request_full_sync") {
+          manager.sendFullSync(ws);
+        }
+      } catch (error) {
+        logger.error(`Error processing WebSocket message: ${error}`);
       }
     },
     close: (ws) => {
-      console.log('ws - close', ws)
       manager.disconnect(ws);
     },
   })
