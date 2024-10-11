@@ -18,15 +18,12 @@ services:
       - "3001:3001"
     environment:
       - NODE_ENV=production
-<<<<<<< HEAD
       - SECRET_KEY=gbstu1nj9qpFE74nXW-YibXzM33Je5lDxjWCdqs3HKI
-=======
     deploy:
       resources:
         limits:
           cpus: '0.5'
           memory: 512M
->>>>>>> deploy-test-2
 
   nginx:
     image: nginx:latest
