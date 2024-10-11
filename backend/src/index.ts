@@ -4,6 +4,7 @@ import { jwt } from "@elysiajs/jwt";
 import { swagger } from "@elysiajs/swagger";
 import Database from "better-sqlite3";
 import { config } from "dotenv";
+import { rateLimit } from '@elysiajs/rate-limit';
 
 // Load environment variables
 config();
@@ -66,7 +67,11 @@ interface User {
 // WebSocket connections store
 class ConnectionManager {
   private connections: Set<WebSocket> = new Set();
+<<<<<<< HEAD
   private MAX_CONNECTIONS = 100;
+=======
+  private MAX_CONNECTIONS = 100; // Adjust as needed
+>>>>>>> deploy-test-2
 
   async connect(ws: WebSocket): Promise<boolean> {
     if (this.connections.size >= this.MAX_CONNECTIONS) {
@@ -177,6 +182,7 @@ const app = new Elysia()
   .use(jwt({
     name: 'jwt',
     secret: SECRET_KEY,
+<<<<<<< HEAD
   }));
 
 app.post("/api/token", async ({ body, jwt }: { body: any, jwt: any }) => {
@@ -215,6 +221,57 @@ app.post("/api/token", async ({ body, jwt }: { body: any, jwt: any }) => {
 })
 .put("/api/docks/:id", async ({ params, body, jwt }: { params: any, body: any, jwt: any }) => {
   try {
+=======
+  }))
+  .use(rateLimit({
+    duration: 60000, // 1 minute
+    max: 100 // max 100 requests per minute
+  }))
+  .onStart(() => {
+    initDb();
+    logger.info("Application startup: Database initialized");
+  })
+  .post("/api/token", async ({ body, jwt }) => {
+    const { username, password } = body;
+    
+    logger.info(`Login attempt for user: ${username}`);
+    
+    // TODO: Implement actual user authentication logic
+    if (username === "deicer" && password === "deicer") {
+      const token = await jwt.sign({ username });
+      logger.info(`Login successful for user: ${username}`);
+      return { access_token: token };
+    } else {
+      logger.warn(`Login failed for user: ${username}`);
+      throw new Error("Invalid username or password");
+    }
+  }, {
+    body: t.Object({
+      username: t.String(),
+      password: t.String(),
+    })
+  })
+  .get("/api/docks", async ({ set }) => {
+    try {
+      const cachedDocks = await cache.get('all_docks');
+      if (cachedDocks) return cachedDocks;
+
+      const conn = await dbPool.getConnection();
+      const docks = conn.query("SELECT * FROM docks").all();
+      await cache.set('all_docks', docks, 60); // Cache for 60 seconds
+      return docks;
+    } catch (error) {
+      console.error("Error fetching docks:", error);
+      set.status = 500;
+      return { error: "Internal server error" };
+    }
+  })
+  .put("/api/docks/:id", async ({ params, body, jwt }) => {
+    // const payload = await jwt.verify();
+    // console.log('put payload - ', payload)
+    // if (!payload) throw new Error("Unauthorized");
+    
+>>>>>>> deploy-test-2
     const { id } = params;
     const { status } = body;
     
@@ -243,6 +300,7 @@ app.post("/api/token", async ({ body, jwt }: { body: any, jwt: any }) => {
   body: t.Object({
     status: t.String(),
   })
+<<<<<<< HEAD
 })
 .ws("/ws", {
   open: async (ws: WebSocket) => {
@@ -259,6 +317,19 @@ app.post("/api/token", async ({ body, jwt }: { body: any, jwt: any }) => {
   },
   message: (ws: WebSocket, message: string | ArrayBuffer) => {
     try {
+=======
+  .ws("/ws", {
+    open: async (ws) => {
+      console.log('ws - open', ws);
+      if (await manager.connect(ws)) {
+        manager.sendFullSync(ws);
+      } else {
+        ws.close(1013, "Maximum connections reached");
+      }
+    },
+    message: (ws, message) => {
+      console.log('ws - message', ws)
+>>>>>>> deploy-test-2
       const data = JSON.parse(message as string);
       if (data.type === "ping") {
         ws.send(JSON.stringify({ type: "pong" }));
