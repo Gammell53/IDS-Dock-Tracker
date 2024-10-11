@@ -7,8 +7,7 @@ COPY package*.json ./
 RUN bun install
 
 COPY . .
-RUN bun add @elysiajs/rate-limit
-RUN bun run build --target=bun
+RUN bun run build
 
 # Production stage
 FROM oven/bun:1

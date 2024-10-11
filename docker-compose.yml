@@ -18,6 +18,8 @@ services:
       - "3001:3001"
     environment:
       - NODE_ENV=production
+      - SECRET_KEY=gbstu1nj9qpFE74nXW-YibXzM33Je5lDxjWCdqs3HKI
+
   nginx:
     image: nginx:latest
     ports:
@@ -27,4 +29,5 @@ services:
       - ./nginx.conf:/etc/nginx/nginx.conf
       - /etc/letsencrypt:/etc/letsencrypt
     depends_on:
-      - frontend      - backend
+      - frontend
+      - backend

@@ -15,15 +15,6 @@ const logger = {
   error: (message: string) => console.error(`[ERROR] ${message}`),
 };
 
-// Conditionally import rate-limit
-let rateLimit: any;
-try {
-  rateLimit = require('@elysiajs/rate-limit').rateLimit;
-  logger.info("Rate limiting enabled");
-} catch (error) {
-  logger.warn("@elysiajs/rate-limit not found. Rate limiting will be disabled.");
-}
-
 // Secret key to sign JWT tokens
 const SECRET_KEY = process.env.SECRET_KEY;
 if (!SECRET_KEY) {
@@ -182,7 +173,7 @@ initDb().then(() => {
 // Elysia app
 const app = new Elysia()
   .use(cors({
-    origin: (origin) => {
+    origin: (origin: string | null | undefined) => {
       logger.info(`Received request with origin: ${JSON.stringify(origin)}`);
       if (origin === null || origin === undefined) {
         logger.warn('Origin is null or undefined');
@@ -206,15 +197,7 @@ const app = new Elysia()
     secret: SECRET_KEY,
   }));
 
-// Conditionally apply rate limiting
-if (rateLimit) {
-  app.use(rateLimit({
-    duration: 15 * 60 * 1000, // 15 minutes
-    max: 100 // limit each IP to 100 requests per duration
-  }));
-}
-
-app.post("/api/token", async ({ body, jwt }) => {
+app.post("/api/token", async ({ body, jwt }: { body: any, jwt: any }) => {
   const { username, password } = body;
   
   logger.info(`Login attempt for user: ${username}`);
@@ -234,7 +217,7 @@ app.post("/api/token", async ({ body, jwt }) => {
     password: t.String(),
   })
 })
-.get("/api/docks", async ({ set }) => {
+.get("/api/docks", async ({ set }: { set: any }) => {
   try {
     const cachedDocks = await cache.get('all_docks');
     if (cachedDocks) return cachedDocks;
@@ -249,7 +232,7 @@ app.post("/api/token", async ({ body, jwt }) => {
     return { error: "Internal server error", details: error.message };
   }
 })
-.put("/api/docks/:id", async ({ params, body, jwt }) => {
+.put("/api/docks/:id", async ({ params, body, jwt }: { params: any, body: any, jwt: any }) => {
   try {
     const { id } = params;
     const { status } = body;
@@ -282,7 +265,7 @@ app.post("/api/token", async ({ body, jwt }) => {
   })
 })
 .ws("/ws", {
-  open: async (ws) => {
+  open: async (ws: WebSocket) => {
     try {
       if (!await manager.connect(ws)) {
         ws.close(1013, "Maximum connections reached");
@@ -294,7 +277,7 @@ app.post("/api/token", async ({ body, jwt }) => {
       ws.close(1011, "Unexpected error occurred");
     }
   },
-  message: (ws, message) => {
+  message: (ws: WebSocket, message: string | ArrayBuffer) => {
     try {
       const data = JSON.parse(message as string);
       if (data.type === "ping") {
@@ -306,7 +289,7 @@ app.post("/api/token", async ({ body, jwt }) => {
       logger.error(`Error processing WebSocket message: ${error}`);
     }
   },
-  close: (ws) => {
+  close: (ws: WebSocket) => {
     manager.disconnect(ws);
   },
 })
