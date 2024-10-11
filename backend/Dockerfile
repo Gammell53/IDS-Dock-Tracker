@@ -21,10 +21,10 @@ FROM oven/bun:1
 
 WORKDIR /app
 
-# Install runtime dependencies
-RUN apt-get update && apt-get install -y \
-    libstdc++ \
-    && rm -rf /var/lib/apt/lists/*
+# # Install runtime dependencies
+# RUN apt-get update && apt-get install -y \
+#     libstdc++ \
+#     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=build /app/dist ./dist
 COPY package*.json ./
