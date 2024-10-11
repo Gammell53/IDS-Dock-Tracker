@@ -7,6 +7,7 @@ COPY package*.json ./
 RUN bun install
 
 COPY . .
+RUN bun add @elysiajs/rate-limit
 RUN bun run build --target=bun
 
 # Production stage

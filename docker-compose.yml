@@ -17,8 +17,7 @@ services:
     ports:
       - "3001:3001"
     environment:
-      - NODE_ENV=production
-
+      - SECRET_KEY=gbstu1nj9qpFE74nXW-YibXzM33Je5lDxjWCdqs3HKI
   nginx:
     image: nginx:latest
     ports:
