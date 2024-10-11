@@ -4,7 +4,6 @@ import { jwt } from "@elysiajs/jwt";
 import { swagger } from "@elysiajs/swagger";
 import { Database } from "bun:sqlite";
 import { config } from "dotenv";
-import { rateLimit } from '@elysiajs/rate-limit';
 
 // Load environment variables
 config();
@@ -15,6 +14,15 @@ const logger = {
   warn: (message: string) => console.warn(`[WARN] ${message}`),
   error: (message: string) => console.error(`[ERROR] ${message}`),
 };
+
+// Conditionally import rate-limit
+let rateLimit: any;
+try {
+  rateLimit = require('@elysiajs/rate-limit').rateLimit;
+  logger.info("Rate limiting enabled");
+} catch (error) {
+  logger.warn("@elysiajs/rate-limit not found. Rate limiting will be disabled.");
+}
 
 // Secret key to sign JWT tokens
 const SECRET_KEY = process.env.SECRET_KEY || "your_secret_key_here";
@@ -176,108 +184,109 @@ const app = new Elysia()
   .use(jwt({
     name: 'jwt',
     secret: SECRET_KEY,
-  }))
-  .use(rateLimit({
+  }));
+
+// Conditionally apply rate limiting
+if (rateLimit) {
+  app.use(rateLimit({
     duration: 15 * 60 * 1000, // 15 minutes
     max: 100 // limit each IP to 100 requests per duration
-  }))
-  .onStart(() => {
-    initDb();
-    logger.info("Application startup: Database initialized");
-  })
-  .post("/api/token", async ({ body, jwt }) => {
-    const { username, password } = body;
-    
-    logger.info(`Login attempt for user: ${username}`);
-    
-    // TODO: Implement actual user authentication logic
-    if (username === "deicer" && password === "deicer") {
-      const token = await jwt.sign({ username });
-      logger.info(`Login successful for user: ${username}`);
-      return { access_token: token };
-    } else {
-      logger.warn(`Login failed for user: ${username}`);
-      throw new Error("Invalid username or password");
-    }
-  }, {
-    body: t.Object({
-      username: t.String(),
-      password: t.String(),
-    })
-  })
-  .get("/api/docks", async ({ set }) => {
-    try {
-      const cachedDocks = await cache.get('all_docks');
-      if (cachedDocks) return cachedDocks;
+  }));
+}
 
-      const conn = await dbPool.getConnection();
-      const docks = conn.query("SELECT * FROM docks").all();
-      await cache.set('all_docks', docks, 60); // Cache for 60 seconds
-      return docks;
-    } catch (error) {
-      logger.error(`Error fetching docks: ${error}`);
-      set.status = 500;
-      return { error: "Internal server error" };
-    }
+app.post("/api/token", async ({ body, jwt }) => {
+  const { username, password } = body;
+  
+  logger.info(`Login attempt for user: ${username}`);
+  
+  // TODO: Implement actual user authentication logic
+  if (username === "deicer" && password === "deicer") {
+    const token = await jwt.sign({ username });
+    logger.info(`Login successful for user: ${username}`);
+    return { access_token: token };
+  } else {
+    logger.warn(`Login failed for user: ${username}`);
+    throw new Error("Invalid username or password");
+  }
+}, {
+  body: t.Object({
+    username: t.String(),
+    password: t.String(),
   })
-  .put("/api/docks/:id", async ({ params, body, jwt }) => {
+})
+.get("/api/docks", async ({ set }) => {
+  try {
+    const cachedDocks = await cache.get('all_docks');
+    if (cachedDocks) return cachedDocks;
+
+    const conn = await dbPool.getConnection();
+    const docks = conn.query("SELECT * FROM docks").all();
+    await cache.set('all_docks', docks, 60); // Cache for 60 seconds
+    return docks;
+  } catch (error) {
+    logger.error(`Error fetching docks: ${error}`);
+    set.status = 500;
+    return { error: "Internal server error" };
+  }
+})
+.put("/api/docks/:id", async ({ params, body, jwt }) => {
+  try {
+    const { id } = params;
+    const { status } = body;
+    
+    const conn = await dbPool.getConnection();
+    const result = conn.query("UPDATE docks SET status = ? WHERE id = ? RETURNING *")
+      .get(status, id) as Dock | undefined;
+    
+    if (!result) throw new Error("Dock not found");
+    
+    const updateMessage = JSON.stringify({
+      type: "dock_updated",
+      data: result
+    });
+    
+    await manager.broadcast(updateMessage);
+    await cache.set('all_docks', null, 0); // Invalidate cache
+    
+    return result;
+  } catch (error) {
+    logger.error(`Error updating dock: ${error}`);
+    throw error;
+  }
+}, {
+  params: t.Object({
+    id: t.Numeric(),
+  }),
+  body: t.Object({
+    status: t.String(),
+  })
+})
+.ws("/ws", {
+  open: (ws) => {
+    if (!manager.connect(ws)) {
+      ws.close(1013, "Maximum connections reached");
+      return;
+    }
+    manager.sendFullSync(ws);
+  },
+  message: (ws, message) => {
     try {
-      const { id } = params;
-      const { status } = body;
-      
-      const conn = await dbPool.getConnection();
-      const result = conn.query("UPDATE docks SET status = ? WHERE id = ? RETURNING *")
-        .get(status, id) as Dock | undefined;
-      
-      if (!result) throw new Error("Dock not found");
-      
-      const updateMessage = JSON.stringify({
-        type: "dock_updated",
-        data: result
-      });
-      
-      await manager.broadcast(updateMessage);
-      await cache.set('all_docks', null, 0); // Invalidate cache
-      
-      return result;
+      const data = JSON.parse(message as string);
+      if (data.type === "ping") {
+        ws.send(JSON.stringify({ type: "pong" }));
+      } else if (data.type === "request_full_sync") {
+        manager.sendFullSync(ws);
+      }
     } catch (error) {
-      logger.error(`Error updating dock: ${error}`);
-      throw error;
+      logger.error(`Error processing WebSocket message: ${error}`);
     }
-  }, {
-    params: t.Object({
-      id: t.Numeric(),
-    }),
-    body: t.Object({
-      status: t.String(),
-    })
-  })
-  .ws("/ws", {
-    open: (ws) => {
-      if (!manager.connect(ws)) {
-        ws.close(1013, "Maximum connections reached");
-        return;
-      }
-      manager.sendFullSync(ws);
-    },
-    message: (ws, message) => {
-      try {
-        const data = JSON.parse(message as string);
-        if (data.type === "ping") {
-          ws.send(JSON.stringify({ type: "pong" }));
-        } else if (data.type === "request_full_sync") {
-          manager.sendFullSync(ws);
-        }
-      } catch (error) {
-        logger.error(`Error processing WebSocket message: ${error}`);
-      }
-    },
-    close: (ws) => {
-      manager.disconnect(ws);
-    },
-  })
-  .get("/api/debug", () => ({ status: "OK", message: "API is running" }))
-  .listen(3001);
+  },
+  close: (ws) => {
+    manager.disconnect(ws);
+  },
+})
+.get("/api/debug", () => ({ status: "OK", message: "API is running" }))
+.listen(3001);
 
 console.log(
   `🦊 Elysia is running at ${app.server?.hostname}:${app.server?.port}`

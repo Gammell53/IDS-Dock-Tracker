@@ -7,6 +7,7 @@ COPY package*.json ./
 RUN npm ci --no-audit
 
 COPY . .
+RUN bun add @elysiajs/rate-limit
 RUN npm run build
 
 # Production stage
@@ -19,6 +20,7 @@ COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/.next ./.next
 # COPY --from=build /app/public ./public
 COPY --from=build /app/next.config.* ./
+
 
 EXPOSE 3000
 
