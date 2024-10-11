@@ -3,6 +3,9 @@ FROM oven/bun:1 as build
 
 WORKDIR /app
 
+# Install build dependencies
+RUN apk add --no-cache python3 make g++
+
 COPY package*.json ./
 RUN bun install
 
@@ -13,6 +16,9 @@ RUN bun run build
 FROM oven/bun:1
 
 WORKDIR /app
+
+# Install runtime dependencies
+RUN apk add --no-cache libstdc++
 
 COPY --from=build /app/dist ./dist
 COPY package*.json ./

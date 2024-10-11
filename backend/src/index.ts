@@ -2,7 +2,7 @@ import { Elysia, t } from "elysia";
 import { cors } from "@elysiajs/cors";
 import { jwt } from "@elysiajs/jwt";
 import { swagger } from "@elysiajs/swagger";
-import { Database } from "bun:sqlite";
+import Database from "better-sqlite3";
 import { config } from "dotenv";
 
 // Load environment variables
