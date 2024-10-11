@@ -1,20 +1,20 @@
-# # Build stage
-# FROM oven/bun:1
+# Build stage
+FROM oven/bun:1 AS build
 
-# WORKDIR /app
+WORKDIR /app
 
-# # # Install build dependencies
+# # Install build dependencies
 # # RUN apt-get update && apt-get install -y \
 # #     python3 \
 # #     make \
 # #     g++ \
 # #     && rm -rf /var/lib/apt/lists/*
 
-# COPY package*.json ./
-# RUN bun install
+COPY package*.json ./
+RUN bun install
 
-# COPY . .
-# RUN bun run build
+COPY . .
+RUN bun run build
 
 # Production stage
 FROM oven/bun:1
