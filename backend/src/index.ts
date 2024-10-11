@@ -2,7 +2,7 @@ import { Elysia, t } from "elysia";
 import { cors } from "@elysiajs/cors";
 import { jwt } from "@elysiajs/jwt";
 import { swagger } from "@elysiajs/swagger";
-import { Database } from "bun:sqlite";
+import sqlite3 from "sqlite3";
 import { config } from "dotenv";
 
 // Load environment variables
@@ -25,7 +25,7 @@ if (!SECRET_KEY) {
 const ACCESS_TOKEN_EXPIRE_MINUTES = 10080;  // 7 days * 24 hours * 60 mins
 
 // Database setup
-const db = new Database("docks.db");
+const db = new sqlite3.Database("docks.db");
 
 // Simple in-memory cache
 class SimpleCache {
@@ -91,44 +91,69 @@ class ConnectionManager {
 const manager = new ConnectionManager();
 
 // Initialize database
-async function initDb() {
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS docks (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      location TEXT NOT NULL,
-      number INTEGER NOT NULL,
-      status TEXT NOT NULL,
-      name TEXT
-    )
-  `);
+function initDb(): Promise<void> {
+  return new Promise((resolve, reject) => {
+    db.run(`
+      CREATE TABLE IF NOT EXISTS docks (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        location TEXT NOT NULL,
+        number INTEGER NOT NULL,
+        status TEXT NOT NULL,
+        name TEXT
+      )
+    `, (err) => {
+      if (err) {
+        logger.error(`Error creating table: ${err}`);
+        reject(err);
+        return;
+      }
 
-  const existingDocks = db.query("SELECT COUNT(*) as count FROM docks").get() as { count: number };
-  if (existingDocks.count === 0) {
-    logger.info("No existing docks found. Initializing docks...");
-    const southeastDocks = Array.from({ length: 13 }, (_, i) => 
-      ({ location: 'southeast', number: i + 1, status: 'available' })
-    );
-    const southwestDockNames = ['H84', 'H86', 'H87', 'H89', 'H90', 'H92', 'H93', 'H95', 'H96', 'H98', 'H99'];
-    const southwestDocks = southwestDockNames.map((name, i) => 
-      ({ location: 'southwest', number: i + 1, status: 'available', name: name })
-    );
-    
-    const stmt = db.prepare("INSERT INTO docks (location, number, status, name) VALUES (?, ?, ?, ?)");
-    db.transaction(() => {
-      [...southeastDocks, ...southwestDocks].forEach(dock => {
-        stmt.run(dock.location, dock.number, dock.status, dock.name);
+      db.get("SELECT COUNT(*) as count FROM docks", (err, row: { count: number }) => {
+        if (err) {
+          logger.error(`Error counting docks: ${err}`);
+          reject(err);
+          return;
+        }
+
+        if (row.count === 0) {
+          logger.info("No existing docks found. Initializing docks...");
+          const southeastDocks = Array.from({ length: 13 }, (_, i) => 
+            ({ location: 'southeast', number: i + 1, status: 'available' })
+          );
+          const southwestDockNames = ['H84', 'H86', 'H87', 'H89', 'H90', 'H92', 'H93', 'H95', 'H96', 'H98', 'H99'];
+          const southwestDocks = southwestDockNames.map((name, i) => 
+            ({ location: 'southwest', number: i + 1, status: 'available', name: name })
+          );
+          
+          const stmt = db.prepare("INSERT INTO docks (location, number, status, name) VALUES (?, ?, ?, ?)");
+          db.serialize(() => {
+            [...southeastDocks, ...southwestDocks].forEach(dock => {
+              stmt.run(dock.location, dock.number, dock.status, dock.name);
+            });
+            stmt.finalize();
+            logger.info(`Initialized ${southeastDocks.length + southwestDocks.length} docks.`);
+            resolve();
+          });
+        } else {
+          logger.info(`Found ${row.count} existing docks in the database.`);
+          resolve();
+        }
       });
-    })();
-    logger.info(`Initialized ${southeastDocks.length + southwestDocks.length} docks.`);
-  } else {
-    logger.info(`Found ${existingDocks.count} existing docks in the database.`);
-  }
+    });
+  });
 }
 
-async function fetchAllDocks() {
-  const docks = db.query("SELECT * FROM docks").all();
-  cache.set('all_docks', docks, 60); // Cache for 60 seconds
-  return docks;
+function fetchAllDocks(): Promise<any[]> {
+  return new Promise((resolve, reject) => {
+    db.all("SELECT * FROM docks", (err, rows) => {
+      if (err) {
+        reject(err);
+      } else {
+        cache.set('all_docks', rows, 60); // Cache for 60 seconds
+        resolve(rows);
+      }
+    });
+  });
 }
 
 // Elysia app
@@ -157,8 +182,8 @@ const app = new Elysia()
     name: 'jwt',
     secret: SECRET_KEY,
   }))
-  .onStart(() => {
-    initDb();
+  .onStart(async () => {
+    await initDb();
     logger.info("Application startup: Database initialized");
   })
   .post("/api/token", async ({ body, jwt }) => {
@@ -186,9 +211,7 @@ const app = new Elysia()
       const cachedDocks = cache.get('all_docks');
       if (cachedDocks) return cachedDocks;
 
-      const docks = db.query("SELECT * FROM docks").all();
-      cache.set('all_docks', docks, 60); // Cache for 60 seconds
-      return docks;
+      return await fetchAllDocks();
     } catch (error) {
       logger.error(`Error fetching docks: ${error}`);
       set.status = 500;
@@ -199,22 +222,31 @@ const app = new Elysia()
     const { id } = params;
     const { status } = body;
     
-    const result = db.transaction(() => {
-      return db.prepare("UPDATE docks SET status = ? WHERE id = ? RETURNING *")
-        .get(status, id);
-    })() as Dock | undefined;
-    
-    if (!result) throw new Error("Dock not found");
-    
-    const updateMessage = JSON.stringify({
-      type: "dock_updated",
-      data: result
+    return new Promise((resolve, reject) => {
+      db.run("UPDATE docks SET status = ? WHERE id = ?", [status, id], function(err) {
+        if (err) {
+          reject(err);
+        } else if (this.changes === 0) {
+          reject(new Error("Dock not found"));
+        } else {
+          db.get("SELECT * FROM docks WHERE id = ?", [id], (err, row) => {
+            if (err) {
+              reject(err);
+            } else {
+              const updateMessage = JSON.stringify({
+                type: "dock_updated",
+                data: row
+              });
+              
+              manager.broadcast(updateMessage);
+              cache.set('all_docks', null, 0); // Invalidate cache
+              
+              resolve(row);
+            }
+          });
+        }
+      });
     });
-    
-    manager.broadcast(updateMessage);
-    cache.set('all_docks', null, 0); // Invalidate cache
-    
-    return result;
   }, {
     params: t.Object({
       id: t.Numeric(),
