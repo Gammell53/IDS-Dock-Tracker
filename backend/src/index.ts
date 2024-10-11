@@ -83,7 +83,7 @@ class ConnectionManager {
 
   async sendFullSync(ws: WebSocket) {
     try {
-      const docks = cache.get('all_docks') || await fetchAllDocks();
+      const docks = await fetchAllDocks(); // Always fetch fresh data
       ws.send(JSON.stringify({
         type: "full_sync",
         docks: docks
@@ -264,7 +264,8 @@ const app = new Elysia()
   .ws("/ws", {
     open: (ws) => {
       if (manager.connect(ws)) {
-        manager.sendFullSync(ws);
+        // We'll wait for the client to request a full sync
+        logger.info("New WebSocket connection established");
       } else {
         ws.close(1013, "Maximum connections reached");
       }
@@ -275,6 +276,7 @@ const app = new Elysia()
         if (data.type === "ping") {
           ws.send(JSON.stringify({ type: "pong" }));
         } else if (data.type === "request_full_sync") {
+          logger.info("Received request for full sync");
           manager.sendFullSync(ws);
         }
       } catch (error) {

@@ -292,9 +292,35 @@ function setupWebSocket() {
 
   ws.onopen = () => {
     console.log('WebSocket connection opened');
+    // Request a full sync when the connection is established or re-established
+    ws.send(JSON.stringify({ type: "request_full_sync" }));
   };
 
-  // ... other event handlers
+  ws.onmessage = async (event) => {
+    try {
+      console.log('Received WebSocket message:', event.data);
+      let jsonData;
+      if (event.data instanceof Blob) {
+        const text = await event.data.text();
+        jsonData = JSON.parse(text);
+      } else {
+        jsonData = JSON.parse(event.data);
+      }
+      if (jsonData.type === 'dock_updated') {
+        console.log('Processing dock_updated event:', jsonData.data);
+        setDocks(prevDocks => 
+          prevDocks.map(dock => 
+            dock.id === jsonData.data.id ? {...jsonData.data, name: getDockName(jsonData.data)} : dock
+          )
+        );
+      } else if (jsonData.type === 'full_sync') {
+        console.log('Processing full_sync event:', jsonData.docks);
+        setDocks(jsonData.docks.map(dock => ({...dock, name: getDockName(dock)})));
+      }
+    } catch (error) {
+      console.error('Error processing WebSocket message:', error);
+    }
+  };
 
   ws.onclose = () => {
     console.log('WebSocket connection closed. Reconnecting...');
