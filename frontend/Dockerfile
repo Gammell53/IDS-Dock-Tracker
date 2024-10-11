@@ -7,7 +7,7 @@ COPY package*.json ./
 RUN npm ci --no-audit
 
 COPY . .
-RUN bun add @elysiajs/rate-limit
+# Remove the bun command
 RUN npm run build
 
 # Production stage
