@@ -2,7 +2,7 @@ import { Elysia, t } from "elysia";
 import { cors } from "@elysiajs/cors";
 import { jwt } from "@elysiajs/jwt";
 import { swagger } from "@elysiajs/swagger";
-import Database from "better-sqlite3";
+import { Database } from "bun:sqlite";
 import { config } from "dotenv";
 
 // Load environment variables
@@ -24,22 +24,8 @@ if (!SECRET_KEY) {
 
 const ACCESS_TOKEN_EXPIRE_MINUTES = 10080;  // 7 days * 24 hours * 60 mins
 
-// Database setup with connection pooling
-class DatabasePool {
-  private pool: Database[];
-  private maxConnections: number;
-
-  constructor(dbPath: string, maxConnections: number) {
-    this.maxConnections = maxConnections;
-    this.pool = Array.from({ length: maxConnections }, () => new Database(dbPath));
-  }
-
-  async getConnection(): Promise<Database> {
-    return this.pool[Math.floor(Math.random() * this.maxConnections)];
-  }
-}
-
-const dbPool = new DatabasePool("docks.db", 10);
+// Database setup
+const db = new Database("docks.db");
 
 // Simple in-memory cache
 class SimpleCache {
@@ -107,8 +93,7 @@ class ConnectionManager {
 
   async sendFullSync(ws: WebSocket) {
     try {
-      const conn = await dbPool.getConnection();
-      const docks = conn.query("SELECT * FROM docks").all() as Dock[];
+      const docks = db.query("SELECT * FROM docks").all() as Dock[];
       ws.send(JSON.stringify({
         type: "full_sync",
         docks: docks
@@ -124,10 +109,7 @@ const manager = new ConnectionManager();
 // Initialize database
 async function initDb() {
   try {
-    const conn = await dbPool.getConnection();
-    
-    // Create the docks table if it doesn't exist
-    conn.exec(`
+    db.exec(`
       CREATE TABLE IF NOT EXISTS docks (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         location TEXT NOT NULL,
@@ -137,7 +119,7 @@ async function initDb() {
       )
     `);
 
-    const existingDocks = conn.query("SELECT COUNT(*) as count FROM docks").get() as { count: number };
+    const existingDocks = db.query("SELECT COUNT(*) as count FROM docks").get() as { count: number };
     if (existingDocks.count === 0) {
       logger.info("No existing docks found. Initializing docks...");
       const southeastDocks = Array.from({ length: 13 }, (_, i) => 
@@ -148,8 +130,8 @@ async function initDb() {
         ({ location: 'southwest', number: i + 1, status: 'available', name: name })
       );
       
-      const stmt = conn.prepare("INSERT INTO docks (location, number, status, name) VALUES (?, ?, ?, ?)");
-      conn.transaction(() => {
+      const stmt = db.prepare("INSERT INTO docks (location, number, status, name) VALUES (?, ?, ?, ?)");
+      db.transaction(() => {
         [...southeastDocks, ...southwestDocks].forEach(dock => {
           stmt.run(dock.location, dock.number, dock.status, dock.name);
         });
@@ -222,14 +204,13 @@ app.post("/api/token", async ({ body, jwt }: { body: any, jwt: any }) => {
     const cachedDocks = await cache.get('all_docks');
     if (cachedDocks) return cachedDocks;
 
-    const conn = await dbPool.getConnection();
-    const docks = conn.query("SELECT * FROM docks").all();
+    const docks = db.query("SELECT * FROM docks").all();
     await cache.set('all_docks', docks, 60); // Cache for 60 seconds
     return docks;
   } catch (error) {
     logger.error(`Error fetching docks: ${error}`);
     set.status = 500;
-    return { error: "Internal server error", details: error.message };
+    return { error: "Internal server error", details: (error as Error).message };
   }
 })
 .put("/api/docks/:id", async ({ params, body, jwt }: { params: any, body: any, jwt: any }) => {
@@ -237,8 +218,7 @@ app.post("/api/token", async ({ body, jwt }: { body: any, jwt: any }) => {
     const { id } = params;
     const { status } = body;
     
-    const conn = await dbPool.getConnection();
-    const result = conn.query("UPDATE docks SET status = ? WHERE id = ? RETURNING *")
+    const result = db.query("UPDATE docks SET status = ? WHERE id = ? RETURNING *")
       .get(status, id) as Dock | undefined;
     
     if (!result) throw new Error("Dock not found");
