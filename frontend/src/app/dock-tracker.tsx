@@ -50,7 +50,8 @@ export default function DockTracker() {
         throw new Error(errorData.error || 'Failed to fetch docks');
       }
       const data = await response.json();
-      setDocks(data);
+      setDocks(data.map((dock: Dock) => ({...dock, name: getDockName(dock)})));
+      setLoading(false);
     } catch (error) {
       console.error('Error fetching docks:', error);
       if (error instanceof Error) {
@@ -58,7 +59,6 @@ export default function DockTracker() {
       } else {
         setError('An unknown error occurred');
       }
-    } finally {
       setLoading(false);
     }
   }, []);
@@ -94,7 +94,7 @@ export default function DockTracker() {
           );
         } else if (jsonData.type === 'full_sync') {
           console.log('Processing full_sync event:', jsonData.docks);
-          setDocks(jsonData.docks.map(dock => ({...dock, name: getDockName(dock)})));
+          setDocks(jsonData.docks.map((dock: Dock) => ({...dock, name: getDockName(dock)})));
           lastSyncTimestampRef.current = jsonData.timestamp;
         } else if (jsonData.type === 'heartbeat') {
           console.log('Received heartbeat, sending acknowledgement');
@@ -140,6 +140,7 @@ export default function DockTracker() {
   useEffect(() => {
     console.log('Setting up WebSocket connection');
     setupWebSocket();
+    fetchDocks(); // Initial fetch of docks
 
     const handleVisibilityChange = () => {
       if (!document.hidden) {
@@ -173,7 +174,7 @@ export default function DockTracker() {
       }
       clearInterval(pingInterval);
     };
-  }, [setupWebSocket, checkDataFreshness]);
+  }, [setupWebSocket, checkDataFreshness, fetchDocks]);
 
   const updateDockStatus = async (id: number, status: DockStatus) => {
     try {
@@ -202,8 +203,6 @@ export default function DockTracker() {
       }
 
       console.log(`Successfully updated dock ${id} to status ${status}`);
-      
-      // No need to request a full sync here, the server will broadcast the update
     } catch (error) {
       console.error('Error updating dock status:', error)
       // Revert the optimistic update
@@ -242,10 +241,6 @@ export default function DockTracker() {
   const handleStatusClick = (status: DockStatus) => {
     setStatusFilter(prevStatus => prevStatus === status ? null : status)
   }
-
-  useEffect(() => {
-    fetchDocks();
-  }, [fetchDocks]);
 
   if (loading) {
     console.log('Rendering loading state');
