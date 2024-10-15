@@ -75,6 +75,9 @@ class ConnectionManager {
     clearInterval(ws.heartbeatInterval);
     // @ts-ignore
     clearTimeout(ws.heartbeatTimeout);
+    if (ws.readyState === WebSocket.OPEN) {
+      ws.close();
+    }
   }
 
   private setupHeartbeat(ws: WebSocket) {
@@ -85,7 +88,7 @@ class ConnectionManager {
       if (// @ts-ignore
           !ws.isAlive) {
         logger.warn("WebSocket connection is not alive, terminating");
-        ws.terminate();
+        this.disconnect(ws);
         return;
       }
       // @ts-ignore
@@ -94,7 +97,7 @@ class ConnectionManager {
       // @ts-ignore
       ws.heartbeatTimeout = setTimeout(() => {
         logger.warn("WebSocket heartbeat timeout, terminating connection");
-        ws.terminate();
+        this.disconnect(ws);
       }, this.HEARTBEAT_TIMEOUT);
     }, this.HEARTBEAT_INTERVAL);
   }
@@ -326,6 +329,8 @@ const app = new Elysia()
         const data = JSON.parse(message);
         if (data.type === "ping") {
           ws.send(JSON.stringify({ type: "pong" }));
+          // @ts-ignore
+          ws.isAlive = true;
         } else if (data.type === "heartbeat-ack") {
           // @ts-ignore
           ws.isAlive = true;

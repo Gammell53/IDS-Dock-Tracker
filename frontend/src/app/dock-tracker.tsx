@@ -125,15 +125,27 @@ export default function DockTracker() {
     console.log('Setting up WebSocket connection');
     setupWebSocket();
 
-    // Set up visibility change listener
     const handleVisibilityChange = () => {
-      if (!document.hidden && (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN)) {
-        console.log('Page became visible, reconnecting WebSocket');
-        setupWebSocket();
+      if (!document.hidden) {
+        console.log('Page became visible, checking WebSocket connection');
+        if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
+          console.log('WebSocket not connected, reconnecting...');
+          setupWebSocket();
+        } else {
+          console.log('WebSocket already connected, requesting full sync');
+          wsRef.current.send(JSON.stringify({ type: "request_full_sync" }));
+        }
       }
     };
 
     document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    // Ping the server every 30 seconds to keep the connection alive
+    const pingInterval = setInterval(() => {
+      if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+        wsRef.current.send(JSON.stringify({ type: "ping" }));
+      }
+    }, 30000);
 
     return () => {
       console.log('Cleaning up WebSocket connection');
@@ -144,6 +156,7 @@ export default function DockTracker() {
       if (reconnectTimeoutRef.current) {
         clearTimeout(reconnectTimeoutRef.current);
       }
+      clearInterval(pingInterval);
     };
   }, [setupWebSocket]);
 
