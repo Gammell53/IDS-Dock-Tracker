@@ -19,6 +19,7 @@ const southwestDockNames = ['H84', 'H86', 'H87', 'H89', 'H90', 'H92', 'H93', 'H9
 // Use an environment variable for the API URL
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'https://idsdock.com/api';
 const WS_URL = process.env.NEXT_PUBLIC_WS_URL || 'wss://idsdock.com/ws';
+const STALE_DATA_THRESHOLD = 5 * 60 * 1000; // 5 minutes in milliseconds
 
 export default function DockTracker() {
   const [docks, setDocks] = useState<Dock[]>([])
@@ -28,6 +29,7 @@ export default function DockTracker() {
   const [error, setError] = useState<string | null>(null)
   const wsRef = useRef<WebSocket | null>(null)
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+  const lastSyncTimestampRef = useRef<number>(0)
 
   console.log('DockTracker rendering, loading:', loading, 'docks:', docks);
 
@@ -70,7 +72,7 @@ export default function DockTracker() {
 
     ws.onopen = () => {
       console.log('WebSocket connection opened');
-      // No need to request full sync here, the server will send it automatically
+      ws.send(JSON.stringify({ type: "request_full_sync" }));
     };
 
     ws.onmessage = async (event) => {
@@ -93,6 +95,7 @@ export default function DockTracker() {
         } else if (jsonData.type === 'full_sync') {
           console.log('Processing full_sync event:', jsonData.docks);
           setDocks(jsonData.docks.map(dock => ({...dock, name: getDockName(dock)})));
+          lastSyncTimestampRef.current = jsonData.timestamp;
         } else if (jsonData.type === 'heartbeat') {
           console.log('Received heartbeat, sending acknowledgement');
           ws.send(JSON.stringify({ type: "heartbeat-ack" }));
@@ -121,20 +124,31 @@ export default function DockTracker() {
     wsRef.current = ws;
   }, []);
 
+  const checkDataFreshness = useCallback(() => {
+    const now = Date.now();
+    if (now - lastSyncTimestampRef.current > STALE_DATA_THRESHOLD) {
+      console.log('Data is stale, requesting full sync');
+      if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+        wsRef.current.send(JSON.stringify({ type: "request_full_sync" }));
+      } else {
+        console.log('WebSocket not connected, fetching docks via API');
+        fetchDocks();
+      }
+    }
+  }, [fetchDocks]);
+
   useEffect(() => {
     console.log('Setting up WebSocket connection');
     setupWebSocket();
 
     const handleVisibilityChange = () => {
       if (!document.hidden) {
-        console.log('Page became visible, checking WebSocket connection');
+        console.log('Page became visible, checking WebSocket connection and data freshness');
         if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
           console.log('WebSocket not connected, reconnecting...');
           setupWebSocket();
-        } else {
-          console.log('WebSocket already connected, requesting full sync');
-          wsRef.current.send(JSON.stringify({ type: "request_full_sync" }));
         }
+        checkDataFreshness();
       }
     };
 
@@ -145,6 +159,7 @@ export default function DockTracker() {
       if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
         wsRef.current.send(JSON.stringify({ type: "ping" }));
       }
+      checkDataFreshness();
     }, 30000);
 
     return () => {
@@ -158,7 +173,7 @@ export default function DockTracker() {
       }
       clearInterval(pingInterval);
     };
-  }, [setupWebSocket]);
+  }, [setupWebSocket, checkDataFreshness]);
 
   const updateDockStatus = async (id: number, status: DockStatus) => {
     try {

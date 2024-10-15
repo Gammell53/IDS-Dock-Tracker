@@ -56,9 +56,18 @@ const cache = new SimpleCache();
 // WebSocket connections store
 class ConnectionManager {
   private connections: Map<string, WebSocket> = new Map();
+  private messageQueues: Map<string, string[]> = new Map();
   private MAX_CONNECTIONS = 1000;
   private HEARTBEAT_INTERVAL = 30000; // 30 seconds
   private HEARTBEAT_TIMEOUT = 5000; // 5 seconds
+  private QUEUE_CLEANUP_INTERVAL = 3600000; // 1 hour
+  private MAX_QUEUE_AGE = 86400000; // 24 hours
+  private FULL_SYNC_INTERVAL = 300000; // 5 minutes
+
+  constructor() {
+    setInterval(() => this.cleanupQueues(), this.QUEUE_CLEANUP_INTERVAL);
+    setInterval(() => this.periodicFullSync(), this.FULL_SYNC_INTERVAL);
+  }
 
   connect(ws: WebSocket): string {
     if (this.connections.size >= this.MAX_CONNECTIONS) {
@@ -67,6 +76,12 @@ class ConnectionManager {
     const id = this.generateUniqueId();
     this.connections.set(id, ws);
     this.setupHeartbeat(ws, id);
+    
+    // Send queued messages if any
+    const queue = this.messageQueues.get(id) || [];
+    queue.forEach(message => ws.send(message));
+    this.messageQueues.delete(id);
+
     return id;
   }
 
@@ -82,6 +97,7 @@ class ConnectionManager {
       }
     }
     this.connections.delete(id);
+    // Keep the message queue for potential reconnection
   }
 
   private setupHeartbeat(ws: WebSocket, id: string) {
@@ -106,15 +122,41 @@ class ConnectionManager {
     }, this.HEARTBEAT_INTERVAL);
   }
 
-  broadcast(message: string, excludeId?: string) {
+  broadcast(message: string) {
+    const timestamp = Date.now();
     for (const [id, ws] of this.connections) {
-      if (id !== excludeId && ws.readyState === WebSocket.OPEN) {
+      if (ws.readyState === WebSocket.OPEN) {
         try {
           ws.send(message);
         } catch (error) {
           logger.error(`Error broadcasting message to ${id}: ${error}`);
+          this.queueMessage(id, message, timestamp);
           this.disconnect(id);
         }
+      } else {
+        this.queueMessage(id, message, timestamp);
+      }
+    }
+  }
+
+  private queueMessage(id: string, message: string, timestamp: number) {
+    if (!this.messageQueues.has(id)) {
+      this.messageQueues.set(id, []);
+    }
+    this.messageQueues.get(id)!.push(JSON.stringify({ message, timestamp }));
+  }
+
+  private cleanupQueues() {
+    const now = Date.now();
+    for (const [id, queue] of this.messageQueues) {
+      const filteredQueue = queue.filter(item => {
+        const { timestamp } = JSON.parse(item);
+        return now - timestamp < this.MAX_QUEUE_AGE;
+      });
+      if (filteredQueue.length === 0) {
+        this.messageQueues.delete(id);
+      } else {
+        this.messageQueues.set(id, filteredQueue);
       }
     }
   }
@@ -124,7 +166,8 @@ class ConnectionManager {
       const docks = await fetchAllDocks();
       ws.send(JSON.stringify({
         type: "full_sync",
-        docks: docks
+        docks: docks,
+        timestamp: Date.now() // Add a timestamp to the full sync message
       }));
     } catch (error) {
       logger.error(`Error sending full sync: ${error}`);
@@ -133,6 +176,21 @@ class ConnectionManager {
 
   private generateUniqueId(): string {
     return Math.random().toString(36).substr(2, 9);
+  }
+
+  private async periodicFullSync() {
+    try {
+      const docks = await fetchAllDocks();
+      const fullSyncMessage = JSON.stringify({
+        type: "full_sync",
+        docks: docks,
+        timestamp: Date.now()
+      });
+      this.broadcast(fullSyncMessage);
+      logger.info("Periodic full sync completed");
+    } catch (error) {
+      logger.error(`Error during periodic full sync: ${error}`);
+    }
   }
 }
 
