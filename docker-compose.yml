@@ -14,14 +14,12 @@ services:
 
   backend:
     build:
-      context: ./backend_2
+      context: ./backend
       dockerfile: Dockerfile
     ports:
       - "3001:3001"
     environment:
       - JWT_SECRET=gbstu1nj9qpFE74nXW-YibXzM33Je5lDxjWCdqs3HKI
-    volumes:
-      - ./backend_2/docks.db:/root/docks.db
 
   nginx:
     image: nginx:latest
