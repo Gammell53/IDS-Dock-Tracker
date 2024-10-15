@@ -14,18 +14,14 @@ services:
 
   backend:
     build:
-      context: ./backend
+      context: ./backend_2
       dockerfile: Dockerfile
     ports:
       - "3001:3001"
     environment:
-      - NODE_ENV=production
-      - SECRET_KEY=gbstu1nj9qpFE74nXW-YibXzM33Je5lDxjWCdqs3HKI
-    deploy:
-      resources:
-        limits:
-          cpus: '0.5'
-          memory: 512M
+      - JWT_SECRET=gbstu1nj9qpFE74nXW-YibXzM33Je5lDxjWCdqs3HKI
+    volumes:
+      - ./backend_2/docks.db:/root/docks.db
 
   nginx:
     image: nginx:latest
