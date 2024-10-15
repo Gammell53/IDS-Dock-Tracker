@@ -102,15 +102,20 @@ export default function DockTracker() {
       }
     };
 
-    ws.onclose = () => {
-      console.log('WebSocket connection closed. Reconnecting...');
+    ws.onclose = (event) => {
+      console.log(`WebSocket connection closed. Code: ${event.code}, Reason: ${event.reason}`);
       wsRef.current = null;
       if (reconnectTimeoutRef.current) {
         clearTimeout(reconnectTimeoutRef.current);
       }
       reconnectTimeoutRef.current = setTimeout(() => {
+        console.log('Attempting to reconnect WebSocket...');
         setupWebSocket();
       }, 5000);
+    };
+
+    ws.onerror = (error) => {
+      console.error('WebSocket error:', error);
     };
 
     wsRef.current = ws;

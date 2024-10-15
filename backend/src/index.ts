@@ -56,7 +56,7 @@ const cache = new SimpleCache();
 // WebSocket connections store
 class ConnectionManager {
   private connections: Set<WebSocket> = new Set();
-  private MAX_CONNECTIONS = 1000; // Increased max connections
+  private MAX_CONNECTIONS = 1000;
   private HEARTBEAT_INTERVAL = 30000; // 30 seconds
   private HEARTBEAT_TIMEOUT = 5000; // 5 seconds
 
@@ -102,7 +102,11 @@ class ConnectionManager {
   broadcast(message: string) {
     for (const ws of this.connections) {
       try {
-        ws.send(message);
+        if (ws.readyState === WebSocket.OPEN) {
+          ws.send(message);
+        } else {
+          this.disconnect(ws);
+        }
       } catch (error) {
         logger.error(`Error broadcasting message: ${error}`);
         this.disconnect(ws);
@@ -309,7 +313,6 @@ const app = new Elysia()
   .ws("/ws", {
     open: (ws) => {
       if (manager.connect(ws)) {
-        // We'll wait for the client to request a full sync
         logger.info("New WebSocket connection established");
       } else {
         ws.close(1013, "Maximum connections reached");
@@ -317,7 +320,10 @@ const app = new Elysia()
     },
     message: (ws, message) => {
       try {
-        const data = JSON.parse(message as string);
+        if (typeof message !== 'string') {
+          throw new Error('Received non-string message');
+        }
+        const data = JSON.parse(message);
         if (data.type === "ping") {
           ws.send(JSON.stringify({ type: "pong" }));
         } else if (data.type === "heartbeat-ack") {
