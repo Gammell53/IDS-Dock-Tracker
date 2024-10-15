@@ -55,40 +55,44 @@ const cache = new SimpleCache();
 
 // WebSocket connections store
 class ConnectionManager {
-  private connections: Set<WebSocket> = new Set();
+  private connections: Map<string, WebSocket> = new Map();
   private MAX_CONNECTIONS = 1000;
   private HEARTBEAT_INTERVAL = 30000; // 30 seconds
   private HEARTBEAT_TIMEOUT = 5000; // 5 seconds
 
-  connect(ws: WebSocket): boolean {
+  connect(ws: WebSocket): string {
     if (this.connections.size >= this.MAX_CONNECTIONS) {
-      return false;
+      return '';
     }
-    this.connections.add(ws);
-    this.setupHeartbeat(ws);
-    return true;
+    const id = this.generateUniqueId();
+    this.connections.set(id, ws);
+    this.setupHeartbeat(ws, id);
+    return id;
   }
 
-  disconnect(ws: WebSocket) {
-    this.connections.delete(ws);
-    // @ts-ignore
-    clearInterval(ws.heartbeatInterval);
-    // @ts-ignore
-    clearTimeout(ws.heartbeatTimeout);
-    if (ws.readyState === WebSocket.OPEN) {
-      ws.close();
+  disconnect(id: string) {
+    const ws = this.connections.get(id);
+    if (ws) {
+      // @ts-ignore
+      clearInterval(ws.heartbeatInterval);
+      // @ts-ignore
+      clearTimeout(ws.heartbeatTimeout);
+      if (ws.readyState === WebSocket.OPEN) {
+        ws.close();
+      }
     }
+    this.connections.delete(id);
   }
 
-  private setupHeartbeat(ws: WebSocket) {
+  private setupHeartbeat(ws: WebSocket, id: string) {
     // @ts-ignore
     ws.isAlive = true;
     // @ts-ignore
     ws.heartbeatInterval = setInterval(() => {
       if (// @ts-ignore
           !ws.isAlive) {
-        logger.warn("WebSocket connection is not alive, terminating");
-        this.disconnect(ws);
+        logger.warn(`WebSocket connection ${id} is not alive, terminating`);
+        this.disconnect(id);
         return;
       }
       // @ts-ignore
@@ -96,30 +100,28 @@ class ConnectionManager {
       ws.send(JSON.stringify({ type: "heartbeat" }));
       // @ts-ignore
       ws.heartbeatTimeout = setTimeout(() => {
-        logger.warn("WebSocket heartbeat timeout, terminating connection");
-        this.disconnect(ws);
+        logger.warn(`WebSocket heartbeat timeout for ${id}, terminating connection`);
+        this.disconnect(id);
       }, this.HEARTBEAT_TIMEOUT);
     }, this.HEARTBEAT_INTERVAL);
   }
 
-  broadcast(message: string) {
-    for (const ws of this.connections) {
-      try {
-        if (ws.readyState === WebSocket.OPEN) {
+  broadcast(message: string, excludeId?: string) {
+    for (const [id, ws] of this.connections) {
+      if (id !== excludeId && ws.readyState === WebSocket.OPEN) {
+        try {
           ws.send(message);
-        } else {
-          this.disconnect(ws);
+        } catch (error) {
+          logger.error(`Error broadcasting message to ${id}: ${error}`);
+          this.disconnect(id);
         }
-      } catch (error) {
-        logger.error(`Error broadcasting message: ${error}`);
-        this.disconnect(ws);
       }
     }
   }
 
   async sendFullSync(ws: WebSocket) {
     try {
-      const docks = await fetchAllDocks(); // Always fetch fresh data
+      const docks = await fetchAllDocks();
       ws.send(JSON.stringify({
         type: "full_sync",
         docks: docks
@@ -129,17 +131,8 @@ class ConnectionManager {
     }
   }
 
-  async broadcastFullSync() {
-    try {
-      const docks = await fetchAllDocks();
-      const message = JSON.stringify({
-        type: "full_sync",
-        docks: docks
-      });
-      this.broadcast(message);
-    } catch (error) {
-      logger.error(`Error broadcasting full sync: ${error}`);
-    }
+  private generateUniqueId(): string {
+    return Math.random().toString(36).substr(2, 9);
   }
 }
 
@@ -296,9 +289,6 @@ const app = new Elysia()
               manager.broadcast(updateMessage);
               cache.set('all_docks', null, 0); // Invalidate cache
               
-              // Broadcast a full sync to ensure all clients are up-to-date
-              manager.broadcastFullSync();
-              
               resolve(row);
             }
           });
@@ -315,8 +305,12 @@ const app = new Elysia()
   })
   .ws("/ws", {
     open: (ws) => {
-      if (manager.connect(ws)) {
-        logger.info("New WebSocket connection established");
+      const id = manager.connect(ws);
+      if (id) {
+        logger.info(`New WebSocket connection established with ID: ${id}`);
+        // @ts-ignore
+        ws.id = id;
+        manager.sendFullSync(ws);
       } else {
         ws.close(1013, "Maximum connections reached");
       }
@@ -345,7 +339,8 @@ const app = new Elysia()
       }
     },
     close: (ws) => {
-      manager.disconnect(ws);
+      // @ts-ignore
+      manager.disconnect(ws.id);
     },
   })
   .get("/api/debug", () => ({ status: "OK", message: "API is running" }))

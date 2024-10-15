@@ -70,7 +70,7 @@ export default function DockTracker() {
 
     ws.onopen = () => {
       console.log('WebSocket connection opened');
-      ws.send(JSON.stringify({ type: "request_full_sync" }));
+      // No need to request full sync here, the server will send it automatically
     };
 
     ws.onmessage = async (event) => {
@@ -188,10 +188,7 @@ export default function DockTracker() {
 
       console.log(`Successfully updated dock ${id} to status ${status}`);
       
-      // Request a full sync after successful update
-      if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-        wsRef.current.send(JSON.stringify({ type: "request_full_sync" }));
-      }
+      // No need to request a full sync here, the server will broadcast the update
     } catch (error) {
       console.error('Error updating dock status:', error)
       // Revert the optimistic update
