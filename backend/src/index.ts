@@ -123,18 +123,19 @@ class ConnectionManager {
   }
 
   broadcast(message: string) {
-    const timestamp = Date.now();
+    logger.info(`Broadcasting message to ${this.connections.size} connections`);
     for (const [id, ws] of this.connections) {
       if (ws.readyState === WebSocket.OPEN) {
         try {
           ws.send(message);
+          logger.info(`Message sent to connection ${id}`);
         } catch (error) {
           logger.error(`Error broadcasting message to ${id}: ${error}`);
-          this.queueMessage(id, message, timestamp);
           this.disconnect(id);
         }
       } else {
-        this.queueMessage(id, message, timestamp);
+        logger.warn(`Connection ${id} is not open, disconnecting`);
+        this.disconnect(id);
       }
     }
   }
@@ -164,11 +165,13 @@ class ConnectionManager {
   async sendFullSync(ws: WebSocket) {
     try {
       const docks = await fetchAllDocks();
-      ws.send(JSON.stringify({
+      const fullSyncMessage = JSON.stringify({
         type: "full_sync",
         docks: docks,
-        timestamp: Date.now() // Add a timestamp to the full sync message
-      }));
+        timestamp: Date.now()
+      });
+      ws.send(fullSyncMessage);
+      logger.info(`Full sync sent to a connection`);
     } catch (error) {
       logger.error(`Error sending full sync: ${error}`);
     }
@@ -344,6 +347,7 @@ const app = new Elysia()
                 data: row
               });
               
+              logger.info(`Broadcasting dock update for dock ${id}`);
               manager.broadcast(updateMessage);
               cache.set('all_docks', null, 0); // Invalidate cache
               
@@ -399,6 +403,7 @@ const app = new Elysia()
     close: (ws) => {
       // @ts-ignore
       manager.disconnect(ws.id);
+      logger.info(`WebSocket connection closed for ID: ${ws.id}`);
     },
   })
   .get("/api/debug", () => ({ status: "OK", message: "API is running" }))
