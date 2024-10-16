@@ -23,11 +23,11 @@ const logger = {
 };
 
 // Secret key to sign JWT tokens
-const SECRET_KEY = process.env.SECRET_KEY;
-if (!SECRET_KEY) {
-  logger.error("SECRET_KEY is not set. Please set it in the environment variables.");
-  process.exit(1);
-}
+// const SECRET_KEY = process.env.SECRET_KEY;
+// if (!SECRET_KEY) {
+//   logger.error("SECRET_KEY is not set. Please set it in the environment variables.");
+//   process.exit(1);
+// }
 
 const ACCESS_TOKEN_EXPIRE_MINUTES = 10080;  // 7 days * 24 hours * 60 mins
 
