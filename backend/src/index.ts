@@ -287,10 +287,10 @@ const app = new Elysia()
     credentials: true,
   }))
   .use(swagger())
-  .use(jwt({
-    name: 'jwt',
-    secret: SECRET_KEY,
-  }))
+  // .use(jwt({
+  //   name: 'jwt',
+  //   secret: SECRET_KEY,
+  // }))
   .onStart(async () => {
     await initDb();
     logger.info("Application startup: Database initialized");
