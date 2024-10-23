@@ -9,7 +9,6 @@ function LoginPage() {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
-  const [loading, setLoading] = useState(false);
   const router = useRouter();
   const { login } = useAuth();
 
@@ -33,13 +32,8 @@ function LoginPage() {
       const data = await response.json();
       localStorage.setItem('token', data.token);
       
-      // Add console log to debug
-      console.log('Login successful, redirecting...');
-      
-      // Force a hard navigation to the docks page
-      window.location.href = '/docks';
-      // Alternatively, use Next.js router
-      // router.push('/docks');
+      // Use router for navigation
+      router.push('/docks');
       
     } catch (error) {
       console.error('Login error:', error);
@@ -48,74 +42,42 @@ function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-gray-900 to-gray-800 px-4 sm:px-6 lg:px-8">
-      <div className="max-w-md w-full space-y-8">
-        <div className="bg-gray-800 shadow-2xl rounded-2xl p-8 border border-gray-700">
-          <div className="flex justify-center mb-8">
-            <span className="rounded-full bg-gradient-to-r from-indigo-500 to-purple-600 p-3 shadow-lg">
-              <Lock className="h-8 w-8 text-white" />
-            </span>
+    <div className="min-h-screen flex items-center justify-center bg-gray-900">
+      <div className="bg-gray-800 p-8 rounded-lg shadow-lg w-96">
+        <h1 className="text-2xl text-white mb-6">Login</h1>
+        {error && (
+          <div className="bg-red-500 text-white p-3 rounded mb-4">
+            {error}
           </div>
-          <h2 className="text-center text-3xl font-extrabold text-white mb-6">
-            Login to IDS DFW
-          </h2>
-          <form className="space-y-6" onSubmit={handleSubmit}>
-            <div className="rounded-md shadow-sm -space-y-px">
-              <div>
-                <label htmlFor="username" className="sr-only">
-                  Username
-                </label>
-                <input
-                  id="username"
-                  name="username"
-                  type="text"
-                  required
-                  className="appearance-none rounded-none relative block w-full px-3 py-3 border border-gray-600 placeholder-gray-400 text-white bg-gray-700 rounded-t-md focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 focus:z-10 sm:text-sm transition duration-150 ease-in-out"
-                  placeholder="Username"
-                  value={username}
-                  onChange={(e) => setUsername(e.target.value)}
-                />
-              </div>
-              <div>
-                <label htmlFor="password" className="sr-only">
-                  Password
-                </label>
-                <input
-                  id="password"
-                  name="password"
-                  type="password"
-                  required
-                  className="appearance-none rounded-none relative block w-full px-3 py-3 border border-gray-600 placeholder-gray-400 text-white bg-gray-700 rounded-b-md focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 focus:z-10 sm:text-sm transition duration-150 ease-in-out"
-                  placeholder="Password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                />
-              </div>
-            </div>
-
-            {error && (
-              <div className="text-red-400 text-sm text-center bg-red-900/30 py-2 px-3 rounded-md">
-                {error}
-              </div>
-            )}
-
-            <div>
-              <button
-                type="submit"
-                disabled={loading}
-                className="group relative w-full flex justify-center py-3 px-4 border border-transparent text-sm font-medium rounded-md text-white bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition duration-150 ease-in-out"
-              >
-                {loading ? (
-                  <Loader className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" />
-                ) : null}
-                {loading ? 'Logging in...' : 'Sign in'}
-              </button>
-            </div>
-          </form>
-          <div className="mt-6 text-sm text-center text-gray-400">
-            Secure access for IDS DFW personnel only
+        )}
+        <form onSubmit={handleSubmit}>
+          <div className="mb-4">
+            <label className="block text-white mb-2">Username</label>
+            <input
+              type="text"
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              className="w-full p-2 rounded bg-gray-700 text-white"
+              required
+            />
           </div>
-        </div>
+          <div className="mb-6">
+            <label className="block text-white mb-2">Password</label>
+            <input
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              className="w-full p-2 rounded bg-gray-700 text-white"
+              required
+            />
+          </div>
+          <button
+            type="submit"
+            className="w-full bg-indigo-600 text-white p-2 rounded hover:bg-indigo-700"
+          >
+            Login
+          </button>
+        </form>
       </div>
     </div>
   );
