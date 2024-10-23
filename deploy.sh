@@ -1,50 +1,36 @@
 #!/bin/bash
 
-# Configuration
-GITHUB_REPO="https://github.com/Gammell53/IDS-Dock-Tracker.git"
-BRANCH="deploy-test"
+# DigitalOcean Configuration
 SERVER_IP="209.38.75.55"
-SERVER_USER="root"
-UPLOAD_PATH="/home/ids-deploy"
+DEPLOY_PATH="/root/ids-dock-tracker"
 
-# Pull from GitHub repository
-echo "Pulling from GitHub repository..."
-cd $UPLOAD_PATH
-git pull origin $BRANCH
-if [ $? -ne 0 ]; then
-    git clone -b $BRANCH $GITHUB_REPO .
-fi
+# Copy files to server
+echo "Copying files to server..."
+ssh root@$SERVER_IP "mkdir -p $DEPLOY_PATH"
+scp -r * .env.prod root@$SERVER_IP:$DEPLOY_PATH
 
-cd $UPLOAD_PATH
+# Install Docker and Docker Compose on the server
+echo "Setting up Docker on server..."
+ssh root@$SERVER_IP "bash -s" << 'ENDSSH'
+    # Update system
+    apt-get update
+    apt-get upgrade -y
 
-# Build Docker images and run docker-compose
-echo "Building and restarting Docker containers..."
-docker-compose down
-docker-compose build
-docker-compose up -d
+    # Install Docker if not installed
+    if ! command -v docker &> /dev/null; then
+        curl -fsSL https://get.docker.com -o get-docker.sh
+        sh get-docker.sh
+    fi
 
-# Explicitly restart Nginx container
-echo "Restarting Nginx container..."
-docker-compose up -d --no-deps --force-recreate nginx
+    # Install Docker Compose if not installed
+    if ! command -v docker compose &> /dev/null; then
+        apt-get install -y docker-compose-plugin
+    fi
 
-# Clean up old images
-docker image prune -f
+    # Navigate to project directory and deploy
+    cd $DEPLOY_PATH
+    docker compose -f docker-compose.prod.yml --env-file .env.prod down
+    docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --build
+ENDSSH
 
-echo "Deployment complete!"
-
-# Build frontend
-# echo "Building frontend..."
-# cd frontend
-# npm i
-# npm run build
-# cd ..
-
-# # Build backend
-# echo "Building backend..."
-# cd backend
-# npm i
-# bun run build --target=bun
-# cd ..
-
-# Re-creates the nginx container to pick up new config
-# docker-compose up  --no-deps --force-recreate nginx
+echo "Deployment completed!"

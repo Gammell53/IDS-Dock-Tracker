@@ -1,14 +1,19 @@
 [Unit]
-Description=IDS Dock Tracker Bun Backend
-After=network.target
+Description=IDS Dock Tracker Service
+After=network.target postgresql.service
 
 [Service]
-ExecStart=/home/ubuntu/.bun/bin/bun run /var/www/ids-dock-tracker/backend/src/index.ts
-WorkingDirectory=/var/www/ids-dock-tracker/backend
-User=ubuntu
-Group=ubuntu
+Type=simple
+User=docktracker
+Environment=ENVIRONMENT=production
+Environment=LOG_LEVEL=info
+ExecStart=/usr/local/bin/dock-tracker
 Restart=always
-Environment=NODE_ENV=production
+RestartSec=5
+
+# Enable logging
+StandardOutput=append:/var/log/dock-tracker/application.log
+StandardError=append:/var/log/dock-tracker/error.log
 
 [Install]
 WantedBy=multi-user.target

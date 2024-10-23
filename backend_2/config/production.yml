@@ -1,0 +1,37 @@
+database:
+  host: ${DB_HOST}
+  port: ${DB_PORT}
+  user: ${DB_USER}
+  password: ${DB_PASSWORD}
+  name: ${DB_NAME}
+  ssl_mode: require
+
+server:
+  port: ${PORT}
+  cors_origins: ["https://yourdomain.com"]
+  jwt_secret: ${JWT_SECRET}
+
+websocket:
+  ping_interval: 30s
+  pong_wait: 60s
+  max_message_size: 512
+
+security:
+  # Use strong JWT secret in production
+  jwt_secret: ${JWT_SECRET}
+  
+  # SSL/TLS Configuration
+  ssl:
+    enabled: true
+    cert_path: /etc/ssl/certs/your-cert.pem
+    key_path: /etc/ssl/private/your-key.pem
+
+  # CORS settings
+  cors:
+    allowed_origins:
+      - https://yourdomain.com
+    allowed_methods:
+      - GET
+      - POST
+      - PUT
+      - OPTIONS

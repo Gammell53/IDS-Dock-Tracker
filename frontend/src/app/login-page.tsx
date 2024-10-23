@@ -15,45 +15,35 @@ function LoginPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setLoading(true);
     setError('');
-
+    
     try {
-      const response = await fetch('https://idsdock.com/api/token', {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/token`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          username: username,
-          password: password,
-        }),
-        credentials: 'include',
+        body: JSON.stringify({ username, password }),
       });
 
-      console.log('Response status:', response.status);
-      console.log('Response headers:', response.headers);
-
-      const responseText = await response.text();
-      console.log('Response text:', responseText);
-
-      if (response.ok) {
-        try {
-          const data = JSON.parse(responseText);
-          await login(data.access_token);
-          router.push('/');
-        } catch (jsonError) {
-          console.error('JSON parsing error:', jsonError);
-          setError('Received invalid response from server');
-        }
-      } else {
-        setError(`Login failed: ${response.status} ${response.statusText}`);
+      if (!response.ok) {
+        throw new Error('Invalid credentials');
       }
+
+      const data = await response.json();
+      localStorage.setItem('token', data.token);
+      
+      // Add console log to debug
+      console.log('Login successful, redirecting...');
+      
+      // Force a hard navigation to the docks page
+      window.location.href = '/docks';
+      // Alternatively, use Next.js router
+      // router.push('/docks');
+      
     } catch (error) {
       console.error('Login error:', error);
-      setError('An error occurred. Please try again.');
-    } finally {
-      setLoading(false);
+      setError('Failed to login. Please try again.');
     }
   };
 
