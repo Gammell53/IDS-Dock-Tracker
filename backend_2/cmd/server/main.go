@@ -1,160 +1,40 @@
 package main
 
 import (
-	"encoding/json"
-	"fmt"
 	"log"
 	"net/http"
-	"os"
-	"strings"
-	"time"
-
-	"github.com/gorilla/mux"
-	_ "github.com/lib/pq"
 
 	"backend_2/internal/database"
 	"backend_2/internal/handlers"
-	"backend_2/internal/websocket"
+	ws "backend_2/internal/websocket"
+
+	"github.com/gorilla/mux"
 )
 
-func handleLogin(w http.ResponseWriter, r *http.Request) {
-	if r.Method == "OPTIONS" {
-		w.WriteHeader(http.StatusOK)
-		return
-	}
-
-	var creds struct {
-		Username string `json:"username"`
-		Password string `json:"password"`
-	}
-
-	if err := json.NewDecoder(r.Body).Decode(&creds); err != nil {
-		http.Error(w, "Invalid request body", http.StatusBadRequest)
-		return
-	}
-
-	// Simple authentication for development
-	if creds.Username == "deicer" && creds.Password == "deicer" {
-		token := "dev_token" // Replace with proper JWT token generation
-		json.NewEncoder(w).Encode(map[string]string{"token": token})
-	} else {
-		http.Error(w, "Invalid credentials", http.StatusUnauthorized)
-	}
-}
-
-func corsMiddleware(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Access-Control-Allow-Origin", "*")
-		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
-		if r.Method == "OPTIONS" {
-			w.WriteHeader(http.StatusOK)
-			return
-		}
-		next.ServeHTTP(w, r)
-	})
-}
-
-func authMiddleware(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		tokenString := r.Header.Get("Authorization")
-		if tokenString == "" {
-			http.Error(w, "Unauthorized", http.StatusUnauthorized)
-			return
-		}
-
-		// Remove 'Bearer ' prefix if present
-		tokenString = strings.TrimPrefix(tokenString, "Bearer ")
-
-		// For development, accept dev_token
-		if tokenString == "dev_token" {
-			next.ServeHTTP(w, r)
-			return
-		}
-
-		// TODO: Add proper JWT validation here
-		http.Error(w, "Invalid token", http.StatusUnauthorized)
-	})
-}
-
 func main() {
-	// Get database connection details from environment variables or use defaults
-	dbHost := getEnv("DB_HOST", "localhost")
-	dbPort := getEnv("DB_PORT", "5432")
-	dbUser := getEnv("DB_USER", "postgres")
-	dbPassword := getEnv("DB_PASSWORD", "postgres")
-	dbName := getEnv("DB_NAME", "docktracker")
-
-	log.Printf("Connecting to PostgreSQL at %s:%s...", dbHost, dbPort)
-
-	// Construct database connection string
-	connectionString := fmt.Sprintf(
-		"host=%s port=%s user=%s password=%s dbname=%s sslmode=disable",
-		dbHost, dbPort, dbUser, dbPassword, dbName,
-	)
-
-	// Initialize database with retry logic
-	var db *database.DB
-	var err error
-	maxRetries := 5
-	for i := 0; i < maxRetries; i++ {
-		db, err = database.NewDB(connectionString)
-		if err == nil {
-			break
-		}
-		log.Printf("Failed to connect to database (attempt %d/%d): %v", i+1, maxRetries, err)
-		if i < maxRetries-1 {
-			time.Sleep(time.Second * 5)
-		}
-	}
+	// Initialize the database
+	db, err := database.NewDB()
 	if err != nil {
-		log.Fatalf("Failed to connect to database after %d attempts: %v", maxRetries, err)
+		log.Fatalf("Failed to initialize database: %v", err)
 	}
 	defer db.Close()
 
-	log.Println("Successfully connected to database")
-
-	// Initialize database schema and default data
-	if err := db.InitializeDB(); err != nil {
-		log.Fatal("Failed to initialize database:", err)
-	}
-
-	// Create and start WebSocket hub
-	hub := websocket.NewHub(db)
+	// Initialize the WebSocket hub
+	hub := ws.NewHub()
 	go hub.Run()
 
-	// Create handler
-	handler := handlers.NewHandler(db, hub)
+	// Create a new router
+	router := mux.NewRouter()
 
-	// Create router
-	r := mux.NewRouter()
+	// Initialize handlers
+	h := handlers.NewHandler(db, hub)
 
-	// Apply CORS middleware to all routes
-	r.Use(corsMiddleware)
+	// Register handlers
+	h.RegisterRoutes(router)
 
-	// Add login endpoint
-	r.HandleFunc("/api/token", handleLogin).Methods("POST", "OPTIONS")
-
-	// API routes
-	api := r.PathPrefix("/api").Subrouter()
-	api.HandleFunc("/docks", handler.HandleGetDocks).Methods("GET", "OPTIONS")
-	api.HandleFunc("/docks/{id}", handler.HandleUpdateDock).Methods("PUT", "OPTIONS")
-
-	// WebSocket endpoint
-	r.HandleFunc("/ws", handler.HandleWebSocket)
-
-	// Get port from environment variable or use default
-	port := getEnv("PORT", "8080")
-
-	log.Printf("Server starting on port %s", port)
-	if err := http.ListenAndServe(":"+port, r); err != nil {
-		log.Fatal("Failed to start server:", err)
+	// Start the server
+	log.Println("Starting server on :8080")
+	if err := http.ListenAndServe(":8080", router); err != nil {
+		log.Fatalf("Failed to start server: %v", err)
 	}
-}
-
-func getEnv(key, fallback string) string {
-	if value, exists := os.LookupEnv(key); exists {
-		return value
-	}
-	return fallback
 }

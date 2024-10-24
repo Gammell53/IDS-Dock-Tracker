@@ -106,14 +106,19 @@ func (h *Handler) HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 	go client.WritePump()
 }
 
-func RegisterRoutes(router *mux.Router) {
-	// ... existing routes ...
-
-	router.HandleFunc("/api/token", TokenHandler).Methods("POST")
-
-	// ... existing routes ...
+func (h *Handler) RegisterRoutes(router *mux.Router) {
+	router.HandleFunc("/api/token", h.TokenHandler).Methods("POST")
+	router.HandleFunc("/api/docks", h.HandleGetDocks).Methods("GET")
+	router.HandleFunc("/api/docks/{id}", h.HandleUpdateDock).Methods("PUT")
+	router.HandleFunc("/ws", h.HandleWebSocket)
 }
 
-func TokenHandler(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) TokenHandler(w http.ResponseWriter, r *http.Request) {
 	// Implement your token generation logic here
+	log.Printf("Received request for /api/token")
+
+	// For example purposes, we'll return a simple JSON response
+	response := map[string]string{"token": "your_generated_token"}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(response)
 }
