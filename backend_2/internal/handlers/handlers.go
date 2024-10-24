@@ -5,65 +5,21 @@ import (
 	"log"
 	"net/http"
 	"strconv"
-	"time"
 
 	"backend_2/internal/database"
 	"backend_2/internal/models"
-	ws "backend_2/internal/websocket" // Aliased to avoid naming conflict
+	"backend_2/internal/websocket"
 
 	"github.com/gorilla/mux"
-	"github.com/gorilla/websocket"
 )
 
 type Handler struct {
 	db  *database.DB
-	hub *ws.Hub // Using aliased import
+	hub *websocket.Hub
 }
 
-var upgrader = websocket.Upgrader{
-	CheckOrigin: func(r *http.Request) bool {
-		return true // Allow all origins in development
-	},
-}
-
-func NewHandler(db *database.DB, hub *ws.Hub) *Handler {
-	return &Handler{
-		db:  db,
-		hub: hub,
-	}
-}
-
-func (h *Handler) HandleWebSocket(w http.ResponseWriter, r *http.Request) {
-	conn, err := upgrader.Upgrade(w, r, nil)
-	if err != nil {
-		log.Printf("Error upgrading connection: %v", err)
-		return
-	}
-
-	client := &ws.Client{
-		ID:   strconv.FormatInt(time.Now().UnixNano(), 10),
-		Conn: conn,
-		Hub:  h.hub,
-	}
-
-	h.hub.Register <- client
-
-	// Send initial full sync
-	docks, err := h.db.GetAllDocks()
-	if err != nil {
-		log.Printf("Error fetching docks for full sync: %v", err)
-		return
-	}
-	h.hub.BroadcastFullSync(docks)
-
-	// Start reading messages
-	for {
-		_, _, err := conn.ReadMessage()
-		if err != nil {
-			h.hub.Unregister <- client
-			break
-		}
-	}
+func NewHandler(db *database.DB, hub *websocket.Hub) *Handler {
+	return &Handler{db: db, hub: hub}
 }
 
 func (h *Handler) HandleGetDocks(w http.ResponseWriter, r *http.Request) {
@@ -127,4 +83,24 @@ func (h *Handler) HandleUpdateDock(w http.ResponseWriter, r *http.Request) {
 
 	// Return the updated dock
 	json.NewEncoder(w).Encode(dock)
+}
+
+func (h *Handler) HandleWebSocket(w http.ResponseWriter, r *http.Request) {
+	conn, err := websocket.Upgrade(w, r, nil)
+	if err != nil {
+		log.Printf("Failed to upgrade WebSocket connection: %v", err)
+		http.Error(w, "Failed to upgrade WebSocket connection", http.StatusInternalServerError)
+		return
+	}
+
+	client := &websocket.Client{
+		ID:   r.RemoteAddr,
+		Conn: conn,
+		Hub:  h.hub,
+	}
+
+	h.hub.Register <- client
+
+	go client.ReadPump()
+	go client.WritePump()
 }

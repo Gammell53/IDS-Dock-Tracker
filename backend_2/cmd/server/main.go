@@ -120,8 +120,11 @@ func main() {
 	}
 
 	// Create and start WebSocket hub
-	hub := websocket.NewHub(db) // Pass the database connection
+	hub := websocket.NewHub(db)
 	go hub.Run()
+
+	// Create handler
+	handler := handlers.NewHandler(db, hub)
 
 	// Create router
 	r := mux.NewRouter()
@@ -134,11 +137,11 @@ func main() {
 
 	// API routes
 	api := r.PathPrefix("/api").Subrouter()
-	api.HandleFunc("/docks", handlers.HandleGetDocks).Methods("GET", "OPTIONS")
-	api.HandleFunc("/docks/{id}", handlers.HandleUpdateDock).Methods("PUT", "OPTIONS")
+	api.HandleFunc("/docks", handler.HandleGetDocks).Methods("GET", "OPTIONS")
+	api.HandleFunc("/docks/{id}", handler.HandleUpdateDock).Methods("PUT", "OPTIONS")
 
 	// WebSocket endpoint
-	r.HandleFunc("/ws", handlers.HandleWebSocket)
+	r.HandleFunc("/ws", handler.HandleWebSocket)
 
 	// Get port from environment variable or use default
 	port := getEnv("PORT", "8080")
