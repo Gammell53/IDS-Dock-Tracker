@@ -64,41 +64,47 @@ export default function DockTracker() {
 
   const setupWebSocket = useCallback(() => {
     if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-      return
+      console.log('[WebSocket] Connection already open');
+      return;
     }
 
-    const ws = new WebSocket(WS_URL)
+    console.log('[WebSocket] Setting up new connection');
+    const ws = new WebSocket(WS_URL);
 
     ws.onopen = () => {
-      console.log('WebSocket connection opened')
-      ws.send(JSON.stringify({ type: "request_full_sync" }))
-      setError(null) // Clear any previous errors
-    }
+      console.log('[WebSocket] Connection opened');
+      ws.send(JSON.stringify({ type: "request_full_sync" }));
+      setError(null);
+    };
 
     ws.onmessage = async (event) => {
       try {
-        console.log('Received WebSocket message:', event.data)
-        const jsonData = JSON.parse(event.data)
+        console.log('[WebSocket] Received message:', event.data);
+        const jsonData = JSON.parse(event.data);
         
         if (jsonData.type === 'dock_updated') {
-          setDocks(prevDocks => 
-            prevDocks.map(dock => 
+          console.log('[WebSocket] Processing dock update:', jsonData.data);
+          setDocks(prevDocks => {
+            const newDocks = prevDocks.map(dock => 
               dock.id === jsonData.data.id ? {...jsonData.data, name: getDockName(jsonData.data)} : dock
-            )
-          )
-          setError(null)
+            );
+            console.log('[WebSocket] Updated docks:', newDocks);
+            return newDocks;
+          });
+          setError(null);
         } else if (jsonData.type === 'full_sync') {
-          setDocks(jsonData.docks.map((dock: Dock) => ({...dock, name: getDockName(dock)})))
-          lastSyncTimestampRef.current = jsonData.timestamp
-          setError(null)
+          console.log('[WebSocket] Processing full sync with', jsonData.docks.length, 'docks');
+          setDocks(jsonData.docks.map((dock: Dock) => ({...dock, name: getDockName(dock)})));
+          lastSyncTimestampRef.current = jsonData.timestamp;
+          setError(null);
         } else if (jsonData.type === 'heartbeat') {
           console.log('Received heartbeat, sending acknowledgement');
           ws.send(JSON.stringify({ type: "heartbeat-ack" }));
         }
       } catch (error) {
-        console.error('Error processing WebSocket message:', error)
+        console.error('[WebSocket] Error processing message:', error);
       }
-    }
+    };
 
     ws.onclose = (event) => {
       console.log(`WebSocket connection closed. Code: ${event.code}, Reason: ${event.reason}`);
@@ -173,16 +179,18 @@ export default function DockTracker() {
 
   const updateDockStatus = async (id: number, status: DockStatus) => {
     try {
-      console.log(`Updating dock ${id} to status ${status}`);
+      console.log(`[updateDockStatus] Starting update for dock ${id} to status ${status}`);
       const token = localStorage.getItem('token');
       
       // Optimistic update
+      console.log(`[updateDockStatus] Applying optimistic update`);
       setDocks(prevDocks => 
         prevDocks.map(dock => 
           dock.id === id ? {...dock, status} : dock
         )
       );
 
+      console.log(`[updateDockStatus] Sending PUT request to ${API_URL}/docks/${id}`);
       const response = await fetch(`${API_URL}/docks/${id}`, {
         method: 'PUT',
         headers: {
@@ -194,13 +202,16 @@ export default function DockTracker() {
 
       if (!response.ok) {
         const errorData = await response.json()
+        console.error(`[updateDockStatus] Server responded with error:`, errorData);
         throw new Error(`Failed to update dock status: ${response.status} ${response.statusText}. ${JSON.stringify(errorData)}`)
       }
 
-      console.log(`Successfully updated dock ${id} to status ${status}`);
+      const updatedDock = await response.json();
+      console.log(`[updateDockStatus] Server confirmed update:`, updatedDock);
     } catch (error) {
-      console.error('Error updating dock status:', error)
+      console.error('[updateDockStatus] Error:', error)
       // Revert the optimistic update
+      console.log('[updateDockStatus] Reverting optimistic update');
       fetchDocks()
     }
   }

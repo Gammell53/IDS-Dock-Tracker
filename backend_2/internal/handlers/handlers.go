@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"backend_2/internal/database"
-	"backend_2/internal/models"
 	ws "backend_2/internal/websocket" // Aliased to avoid naming conflict
 
 	"github.com/gorilla/mux"
@@ -67,57 +66,61 @@ func (h *Handler) HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) HandleGetDocks(w http.ResponseWriter, r *http.Request) {
+	log.Printf("Received request to get all docks")
+
 	// Set content type header
 	w.Header().Set("Content-Type", "application/json")
 
 	docks, err := h.db.GetAllDocks()
 	if err != nil {
-		// Return proper JSON error response
-		w.WriteHeader(http.StatusInternalServerError)
-		json.NewEncoder(w).Encode(map[string]string{
-			"error": "Failed to fetch docks",
-		})
+		log.Printf("Error fetching docks: %v", err)
+		http.Error(w, "Failed to fetch docks", http.StatusInternalServerError)
 		return
 	}
 
-	// Return JSON response
-	if err := json.NewEncoder(w).Encode(docks); err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		json.NewEncoder(w).Encode(map[string]string{
-			"error": "Error encoding response",
-		})
-		return
-	}
+	log.Printf("Returning %d docks", len(docks))
+	json.NewEncoder(w).Encode(docks)
 }
 
 func (h *Handler) HandleUpdateDock(w http.ResponseWriter, r *http.Request) {
+	log.Printf("Received update request for dock: %s", r.URL.Path)
+
+	// Set content type header
+	w.Header().Set("Content-Type", "application/json")
+
+	// Parse dock ID from URL
 	vars := mux.Vars(r)
 	id, err := strconv.Atoi(vars["id"])
 	if err != nil {
+		log.Printf("Error parsing dock ID: %v", err)
 		http.Error(w, "Invalid dock ID", http.StatusBadRequest)
 		return
 	}
 
+	// Parse request body
 	var update struct {
-		Status models.DockStatus `json:"status"`
+		Status string `json:"status"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&update); err != nil {
+		log.Printf("Error decoding request body: %v", err)
 		http.Error(w, "Invalid request body", http.StatusBadRequest)
 		return
 	}
 
+	log.Printf("Updating dock %d to status: %s", id, update.Status)
+
+	// Update the dock
 	dock, err := h.db.UpdateDockStatus(id, update.Status)
 	if err != nil {
+		log.Printf("Error updating dock status: %v", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	// Send response
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(dock)
+	// Broadcast the update
+	log.Printf("Broadcasting dock update to all clients")
+	h.hub.BroadcastUpdate(*dock)
 
-	// Broadcast update
-	if h.hub != nil {
-		h.hub.BroadcastUpdate(*dock)
-	}
+	// Return the updated dock
+	json.NewEncoder(w).Encode(dock)
 }

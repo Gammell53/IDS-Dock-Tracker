@@ -52,14 +52,16 @@ func (h *Hub) Run() {
 			h.mu.Unlock()
 			log.Printf("Client %s disconnected. Total clients: %d", client.ID, len(h.clients))
 
-		case message := <-h.Broadcast:
+		case message := <-h.broadcast:
 			h.mu.RLock()
+			log.Printf("Broadcasting message to %d clients", len(h.clients))
 			for id, client := range h.clients {
-				err := client.Conn.WriteMessage(websocket.TextMessage, message)
-				if err != nil {
-					log.Printf("Error broadcasting to client %s: %v", id, err)
+				if err := client.Conn.WriteMessage(websocket.TextMessage, message); err != nil {
+					log.Printf("Error sending message to client %s: %v", id, err)
 					client.Conn.Close()
 					delete(h.clients, id)
+				} else {
+					log.Printf("Message sent successfully to client %s", id)
 				}
 			}
 			h.mu.RUnlock()
@@ -79,7 +81,8 @@ func (h *Hub) BroadcastUpdate(dock models.Dock) {
 		return
 	}
 
-	h.Broadcast <- message
+	log.Printf("Broadcasting dock update to %d clients", len(h.clients))
+	h.broadcast <- message
 }
 
 func (h *Hub) BroadcastFullSync(docks []models.Dock) {
@@ -95,5 +98,5 @@ func (h *Hub) BroadcastFullSync(docks []models.Dock) {
 		return
 	}
 
-	h.Broadcast <- message
+	h.broadcast <- message
 }
