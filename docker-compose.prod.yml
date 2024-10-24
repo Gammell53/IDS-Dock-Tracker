@@ -5,24 +5,34 @@ services:
     image: postgres:latest
     environment:
       POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres}  # Use env var with fallback
       POSTGRES_DB: postgres
     volumes:
       - postgres_data:/var/lib/postgresql/data
     restart: always
+    networks:
+      - app-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
 
   backend:
     build:
       context: ./backend_2
       dockerfile: Dockerfile.prod
     environment:
-      - DATABASE_URL=postgres://postgres:postgres@postgres:5432/postgres?sslmode=disable
+      - DATABASE_URL=postgres://postgres:${DB_PASSWORD:-postgres}@postgres:5432/postgres?sslmode=disable
       - JWT_SECRET=${JWT_SECRET}
       - PORT=8080
-    ports:
+    expose:
       - "8080"
+    networks:
+      - app-network
     depends_on:
-      - postgres
+      postgres:
+        condition: service_healthy  # Wait for postgres to be healthy
     restart: always
 
   frontend:
@@ -35,6 +45,8 @@ services:
     depends_on:
       - backend
     restart: always
+    networks:
+      - app-network
 
   nginx:
     image: nginx:alpine
@@ -50,6 +62,8 @@ services:
       - frontend
       - backend
     restart: always
+    networks:
+      - app-network
 
   certbot:
     image: certbot/certbot
@@ -60,3 +74,7 @@ services:
 
 volumes:
   postgres_data:
+
+networks:
+  app-network:
+    driver: bridge

@@ -15,7 +15,6 @@ type DB struct {
 }
 
 func NewDB(connectionString string) (*DB, error) {
-	// Add retry logic for initial connection
 	var db *sql.DB
 	var err error
 
@@ -23,20 +22,31 @@ func NewDB(connectionString string) (*DB, error) {
 	for i := 0; i < maxRetries; i++ {
 		db, err = sql.Open("postgres", connectionString)
 		if err != nil {
+			fmt.Printf("Failed to open database connection, attempt %d/%d: %v\n", i+1, maxRetries, err)
+			time.Sleep(time.Second * 2)
 			continue
 		}
 
-		if err = db.Ping(); err == nil {
+		// Try to ping the database
+		err = db.Ping()
+		if err == nil {
+			fmt.Printf("Successfully connected to database on attempt %d\n", i+1)
 			break
 		}
 
-		fmt.Printf("Failed to connect to database, attempt %d/%d: %v\n", i+1, maxRetries, err)
+		fmt.Printf("Failed to ping database, attempt %d/%d: %v\n", i+1, maxRetries, err)
+		db.Close() // Close the failed connection before retrying
 		time.Sleep(time.Second * 2)
 	}
 
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to database after %d attempts: %v", maxRetries, err)
 	}
+
+	// Configure connection pool
+	db.SetMaxOpenConns(25)
+	db.SetMaxIdleConns(5)
+	db.SetConnMaxLifetime(5 * time.Minute)
 
 	return &DB{db}, nil
 }

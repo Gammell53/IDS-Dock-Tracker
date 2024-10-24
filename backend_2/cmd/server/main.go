@@ -17,7 +17,13 @@ import (
 )
 
 func main() {
-	// Get the database connection string from environment variables
+	// Get port from environment variable
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "8080" // default port
+	}
+
+	// Get database connection string from environment variables
 	dbConnStr := os.Getenv("DATABASE_URL")
 	if dbConnStr == "" {
 		log.Fatal("DATABASE_URL environment variable not set")
@@ -29,6 +35,10 @@ func main() {
 		log.Fatalf("Failed to initialize database: %v", err)
 	}
 	defer db.Close()
+
+	if err := db.InitializeDB(); err != nil {
+		log.Fatalf("Failed to initialize database: %v", err)
+	}
 
 	// Initialize the WebSocket hub with the database
 	hub := ws.NewHub(db)
@@ -45,8 +55,10 @@ func main() {
 
 	// Start the server with graceful shutdown
 	srv := &http.Server{
-		Addr:    ":8080",
-		Handler: router,
+		Handler:      router,
+		Addr:         ":" + port,
+		ReadTimeout:  15 * time.Second,
+		WriteTimeout: 15 * time.Second,
 	}
 
 	go func() {
