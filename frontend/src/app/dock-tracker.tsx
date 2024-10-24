@@ -35,75 +35,70 @@ export default function DockTracker() {
 
   const fetchDocks = useCallback(async () => {
     try {
-      const token = localStorage.getItem('token');
-      console.log('token - ', token)
+      const token = localStorage.getItem('token')
       if (!token) {
-        throw new Error('No token found');
+        throw new Error('No token found')
       }
-      const response = await fetch(`${API_URL}/docks`, {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/docks`, {
         headers: {
           'Authorization': `Bearer ${token}`,
         },
-      });
+      })
       if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to fetch docks');
+        throw new Error('Failed to fetch docks')
       }
-      const data = await response.json();
-      setDocks(data.map((dock: Dock) => ({...dock, name: getDockName(dock)})));
-      setLoading(false);
+      const data = await response.json()
+      setDocks(data.map((dock: Dock) => ({...dock, name: getDockName(dock)})))
+      setError(null) // Clear any previous errors
+      setLoading(false)
     } catch (error) {
-      console.error('Error fetching docks:', error);
+      console.error('Error fetching docks:', error)
       if (error instanceof Error) {
-        setError(error.message);
+        setError(error.message)
       } else {
-        setError('An unknown error occurred');
+        setError('An unknown error occurred')
       }
-      setLoading(false);
+      setLoading(false)
     }
-  }, []);
+  }, [])
 
   const setupWebSocket = useCallback(() => {
     if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-      return;
+      return
     }
 
-    const ws = new WebSocket(WS_URL);
+    const ws = new WebSocket(WS_URL)
 
     ws.onopen = () => {
-      console.log('WebSocket connection opened');
-      ws.send(JSON.stringify({ type: "request_full_sync" }));
-    };
+      console.log('WebSocket connection opened')
+      ws.send(JSON.stringify({ type: "request_full_sync" }))
+      setError(null) // Clear any previous errors
+    }
 
     ws.onmessage = async (event) => {
       try {
-        console.log('Received WebSocket message:', event.data);
-        let jsonData;
-        if (event.data instanceof Blob) {
-          const text = await event.data.text();
-          jsonData = JSON.parse(text);
-        } else {
-          jsonData = JSON.parse(event.data);
-        }
+        console.log('Received WebSocket message:', event.data)
+        let jsonData = JSON.parse(event.data)
+        
         if (jsonData.type === 'dock_updated') {
-          console.log('Processing dock_updated event:', jsonData.data);
           setDocks(prevDocks => 
             prevDocks.map(dock => 
               dock.id === jsonData.data.id ? {...jsonData.data, name: getDockName(jsonData.data)} : dock
             )
-          );
+          )
+          setError(null) // Clear any previous errors
         } else if (jsonData.type === 'full_sync') {
-          console.log('Processing full_sync event:', jsonData.docks);
-          setDocks(jsonData.docks.map((dock: Dock) => ({...dock, name: getDockName(dock)})));
-          lastSyncTimestampRef.current = jsonData.timestamp;
+          setDocks(jsonData.docks.map((dock: Dock) => ({...dock, name: getDockName(dock)})))
+          lastSyncTimestampRef.current = jsonData.timestamp
+          setError(null) // Clear any previous errors
         } else if (jsonData.type === 'heartbeat') {
           console.log('Received heartbeat, sending acknowledgement');
           ws.send(JSON.stringify({ type: "heartbeat-ack" }));
         }
       } catch (error) {
-        console.error('Error processing WebSocket message:', error);
+        console.error('Error processing WebSocket message:', error)
       }
-    };
+    }
 
     ws.onclose = (event) => {
       console.log(`WebSocket connection closed. Code: ${event.code}, Reason: ${event.reason}`);
@@ -122,7 +117,7 @@ export default function DockTracker() {
     };
 
     wsRef.current = ws;
-  }, []);
+  }, [])
 
   const checkDataFreshness = useCallback(() => {
     const now = Date.now();
@@ -252,7 +247,7 @@ export default function DockTracker() {
     );
   }
 
-  if (error) {
+  if (error && docks.length === 0) {
     console.log('Rendering error state');
     return (
       <div className="bg-white/90 backdrop-blur-sm shadow-lg rounded-lg p-6 text-center">
