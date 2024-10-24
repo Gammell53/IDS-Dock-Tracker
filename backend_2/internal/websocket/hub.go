@@ -6,6 +6,7 @@ import (
 	"sync"
 	"time"
 
+	"backend_2/internal/database" // Import the correct package for DB
 	"backend_2/internal/models"
 
 	"github.com/gorilla/websocket"
@@ -17,7 +18,7 @@ type Hub struct {
 	Broadcast  chan []byte // Capital B
 	Register   chan *Client
 	Unregister chan *Client
-	db         *models.DB
+	db         *database.DB // Use the correct package for DB
 }
 
 type Client struct {
@@ -26,7 +27,7 @@ type Client struct {
 	Hub  *Hub
 }
 
-func NewHub(db *models.DB) *Hub {
+func NewHub(db *database.DB) *Hub { // Use the correct package for DB
 	return &Hub{
 		clients:    make(map[string]*Client),
 		Broadcast:  make(chan []byte), // Capital B
