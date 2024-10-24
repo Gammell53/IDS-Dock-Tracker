@@ -28,16 +28,16 @@ EOF
 fi
 
 # Stop running containers
-docker compose -f docker-compose.prod.yml down
+docker-compose -f docker-compose.prod.yml down
 
 # Build and start containers
-docker compose -f docker-compose.prod.yml up -d --build
+docker-compose -f docker-compose.prod.yml up -d --build
 
 # Wait for services to start
 echo "Waiting for services to start..."
 sleep 10
 
 # Check service status
-docker compose -f docker-compose.prod.yml ps
+docker-compose -f docker-compose.prod.yml ps
 
 echo "Deployment completed!"
