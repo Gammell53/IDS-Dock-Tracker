@@ -1,10 +1,12 @@
 package database
 
 import (
-	"backend_2/internal/models"
 	"database/sql"
 	"fmt"
-	"log"
+
+	"backend_2/internal/models"
+
+	_ "github.com/lib/pq"
 )
 
 type DB struct {
@@ -22,6 +24,25 @@ func NewDB(connectionString string) (*DB, error) {
 	}
 
 	return &DB{db}, nil
+}
+
+func (db *DB) InitializeDB() error {
+	_, err := db.Exec(`
+		CREATE TABLE IF NOT EXISTS docks (
+			id SERIAL PRIMARY KEY,
+			location VARCHAR(50) NOT NULL,
+			number INTEGER NOT NULL,
+			status VARCHAR(50) NOT NULL,
+			name VARCHAR(50) NOT NULL,
+			UNIQUE(location, number),
+			UNIQUE(name)
+		)
+	`)
+	if err != nil {
+		return fmt.Errorf("failed to create docks table: %v", err)
+	}
+
+	return nil
 }
 
 func (db *DB) GetAllDocks() ([]models.Dock, error) {
@@ -48,19 +69,6 @@ func (db *DB) GetAllDocks() ([]models.Dock, error) {
 }
 
 func (db *DB) UpdateDockStatus(id int, status models.DockStatus) (*models.Dock, error) {
-	// Validate status
-	validStatuses := map[models.DockStatus]bool{
-		models.StatusAvailable:    true,
-		models.StatusOccupied:     true,
-		models.StatusOutOfService: true,
-		models.StatusDeiced:       true,
-	}
-
-	if !validStatuses[status] {
-		return nil, fmt.Errorf("invalid status: %s", status)
-	}
-
-	// Update the dock status
 	result, err := db.Exec(`
 		UPDATE docks 
 		SET status = $1 
@@ -79,68 +87,7 @@ func (db *DB) UpdateDockStatus(id int, status models.DockStatus) (*models.Dock, 
 		return nil, fmt.Errorf("no dock found with id: %d", id)
 	}
 
-	// Get the updated dock
-	var dock models.Dock
-	err = db.QueryRow(`
-		SELECT id, location, number, status, name 
-		FROM docks 
-		WHERE id = $1`,
-		id).Scan(&dock.ID, &dock.Location, &dock.Number, &dock.Status, &dock.Name)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get updated dock: %v", err)
-	}
-
-	return &dock, nil
-}
-
-func (db *DB) InitializeDB() error {
-	// Drop existing table if it exists
-	_, err := db.Exec(`DROP TABLE IF EXISTS docks`)
-	if err != nil {
-		return fmt.Errorf("failed to drop table: %v", err)
-	}
-
-	// Create table
-	_, err = db.Exec(`
-		CREATE TABLE IF NOT EXISTS docks (
-			id SERIAL PRIMARY KEY,
-			location VARCHAR(50) NOT NULL,
-			number INTEGER NOT NULL,
-			status VARCHAR(50) NOT NULL,
-			name VARCHAR(50) NOT NULL,
-			UNIQUE(location, number),
-			UNIQUE(name)
-		)
-	`)
-	if err != nil {
-		return fmt.Errorf("failed to create docks table: %v", err)
-	}
-
-	// Initialize with southwest docks
-	southwestDocks := []string{"H84", "H86", "H87", "H89", "H90", "H92", "H93", "H95", "H96", "H98", "H99"}
-	for i, name := range southwestDocks {
-		_, err := db.Exec(`
-			INSERT INTO docks (location, number, status, name) 
-			VALUES ($1, $2, $3, $4)`,
-			"southwest", i+1, "available", name)
-		if err != nil {
-			return fmt.Errorf("failed to insert southwest dock %s: %v", name, err)
-		}
-	}
-
-	// Initialize southeast docks
-	for i := 1; i <= 13; i++ {
-		_, err := db.Exec(`
-			INSERT INTO docks (location, number, status, name) 
-			VALUES ($1, $2, $3, $4)`,
-			"southeast", i, "available", fmt.Sprintf("Dock %d", i))
-		if err != nil {
-			return fmt.Errorf("failed to insert southeast dock %d: %v", i, err)
-		}
-	}
-
-	log.Printf("Successfully initialized database with %d southwest docks and 13 southeast docks", len(southwestDocks))
-	return nil
+	return db.GetDockByID(id)
 }
 
 func (db *DB) GetDockByID(id int) (*models.Dock, error) {
