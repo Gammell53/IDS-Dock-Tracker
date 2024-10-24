@@ -6,6 +6,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/gorilla/mux"
@@ -43,19 +44,39 @@ func handleLogin(w http.ResponseWriter, r *http.Request) {
 
 func corsMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Set CORS headers for all responses
-		w.Header().Set("Access-Control-Allow-Origin", "http://localhost:3000")
+		w.Header().Set("Access-Control-Allow-Origin", "https://idsdock.com")
 		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
 		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
 		w.Header().Set("Access-Control-Allow-Credentials", "true")
 
-		// Handle preflight requests
 		if r.Method == "OPTIONS" {
 			w.WriteHeader(http.StatusOK)
 			return
 		}
 
 		next.ServeHTTP(w, r)
+	})
+}
+
+func authMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		tokenString := r.Header.Get("Authorization")
+		if tokenString == "" {
+			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			return
+		}
+
+		// Remove 'Bearer ' prefix if present
+		tokenString = strings.TrimPrefix(tokenString, "Bearer ")
+
+		// For development, accept dev_token
+		if tokenString == "dev_token" {
+			next.ServeHTTP(w, r)
+			return
+		}
+
+		// TODO: Add proper JWT validation here
+		http.Error(w, "Invalid token", http.StatusUnauthorized)
 	})
 }
 
@@ -111,20 +132,21 @@ func main() {
 	// Create router
 	r := mux.NewRouter()
 
-	// Add login endpoint
-	r.HandleFunc("/token", handleLogin).Methods("POST", "OPTIONS")
+	// Add CORS middleware
+	r.Use(corsMiddleware)
 
-	// API routes
+	// Public endpoints
+	r.HandleFunc("/token", handleLogin).Methods("POST", "OPTIONS")
+	r.HandleFunc("/ws", handler.HandleWebSocket)
+
+	// API routes with authentication
 	api := r.PathPrefix("/api").Subrouter()
+	api.Use(authMiddleware)
 	api.HandleFunc("/docks", handler.HandleGetDocks).Methods("GET", "OPTIONS")
 	api.HandleFunc("/docks/{id}", handler.HandleUpdateDock).Methods("PUT", "OPTIONS")
 
-	// WebSocket endpoint
-	r.HandleFunc("/ws", handler.HandleWebSocket)
-
-	// Get port from environment variable or use default
+	// Start server
 	port := getEnv("PORT", "8080")
-
 	log.Printf("Server starting on port %s", port)
 	if err := http.ListenAndServe(":"+port, r); err != nil {
 		log.Fatal("Failed to start server:", err)
