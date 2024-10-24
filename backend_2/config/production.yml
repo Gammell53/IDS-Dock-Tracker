@@ -4,12 +4,13 @@ database:
   user: ${DB_USER}
   password: ${DB_PASSWORD}
   name: ${DB_NAME}
-  ssl_mode: require
+  ssl_mode: disable
 
 server:
-  port: ${PORT}
-  cors_origins: ["https://yourdomain.com"]
+  port: 8080
   jwt_secret: ${JWT_SECRET}
+  allowed_origins:
+    - https://idsdock.com
 
 websocket:
   ping_interval: 30s
