@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"backend_2/internal/database"
+	"backend_2/internal/models"
 	ws "backend_2/internal/websocket" // Aliased to avoid naming conflict
 
 	"github.com/gorilla/mux"
@@ -107,10 +108,13 @@ func (h *Handler) HandleUpdateDock(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	log.Printf("Updating dock %d to status: %s", id, update.Status)
+	// Convert string to DockStatus
+	dockStatus := models.DockStatus(update.Status)
+
+	log.Printf("Updating dock %d to status: %s", id, dockStatus)
 
 	// Update the dock
-	dock, err := h.db.UpdateDockStatus(id, update.Status)
+	dock, err := h.db.UpdateDockStatus(id, dockStatus)
 	if err != nil {
 		log.Printf("Error updating dock status: %v", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
