@@ -14,7 +14,7 @@ import (
 type Hub struct {
 	clients    map[string]*Client
 	mu         sync.RWMutex
-	Broadcast  chan []byte // Changed from broadcast to Broadcast
+	Broadcast  chan []byte // Capital B
 	Register   chan *Client
 	Unregister chan *Client
 }
@@ -28,7 +28,7 @@ type Client struct {
 func NewHub() *Hub {
 	return &Hub{
 		clients:    make(map[string]*Client),
-		Broadcast:  make(chan []byte),
+		Broadcast:  make(chan []byte), // Capital B
 		Register:   make(chan *Client),
 		Unregister: make(chan *Client),
 	}
@@ -52,7 +52,7 @@ func (h *Hub) Run() {
 			h.mu.Unlock()
 			log.Printf("Client %s disconnected. Total clients: %d", client.ID, len(h.clients))
 
-		case message := <-h.Broadcast: // Changed from broadcast to Broadcast
+		case message := <-h.Broadcast: // Capital B
 			h.mu.RLock()
 			log.Printf("Broadcasting message to %d clients", len(h.clients))
 			for id, client := range h.clients {
@@ -82,7 +82,7 @@ func (h *Hub) BroadcastUpdate(dock models.Dock) {
 	}
 
 	log.Printf("Broadcasting dock update to %d clients", len(h.clients))
-	h.Broadcast <- message // Changed from broadcast to Broadcast
+	h.Broadcast <- message // Capital B
 }
 
 func (h *Hub) BroadcastFullSync(docks []models.Dock) {
@@ -98,5 +98,5 @@ func (h *Hub) BroadcastFullSync(docks []models.Dock) {
 		return
 	}
 
-	h.broadcast <- message
+	h.Broadcast <- message // Capital B
 }
