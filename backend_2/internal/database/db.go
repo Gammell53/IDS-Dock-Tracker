@@ -3,6 +3,7 @@ package database
 import (
 	"database/sql"
 	"fmt"
+	"time"
 
 	"backend_2/internal/models"
 
@@ -14,13 +15,27 @@ type DB struct {
 }
 
 func NewDB(connectionString string) (*DB, error) {
-	db, err := sql.Open("postgres", connectionString)
-	if err != nil {
-		return nil, err
+	// Add retry logic for initial connection
+	var db *sql.DB
+	var err error
+
+	maxRetries := 5
+	for i := 0; i < maxRetries; i++ {
+		db, err = sql.Open("postgres", connectionString)
+		if err != nil {
+			continue
+		}
+
+		if err = db.Ping(); err == nil {
+			break
+		}
+
+		fmt.Printf("Failed to connect to database, attempt %d/%d: %v\n", i+1, maxRetries, err)
+		time.Sleep(time.Second * 2)
 	}
 
-	if err := db.Ping(); err != nil {
-		return nil, err
+	if err != nil {
+		return nil, fmt.Errorf("failed to connect to database after %d attempts: %v", maxRetries, err)
 	}
 
 	return &DB{db}, nil
