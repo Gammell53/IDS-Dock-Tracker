@@ -23,66 +23,78 @@ func NewHandler(db *database.DB, hub *ws.Hub) *Handler {
 	return &Handler{db: db, hub: hub}
 }
 
-func (h *Handler) HandleGetDocks(w http.ResponseWriter, r *http.Request) {
-	log.Printf("Received request to get all docks")
-
-	// Set content type header
-	w.Header().Set("Content-Type", "application/json")
-
-	docks, err := h.db.GetAllDocks()
-	if err != nil {
-		log.Printf("Error fetching docks: %v", err)
-		http.Error(w, "Failed to fetch docks", http.StatusInternalServerError)
-		return
+func (h *Handler) HandleToken(w http.ResponseWriter, r *http.Request) {
+	var creds struct {
+		Username string `json:"username"`
+		Password string `json:"password"`
 	}
 
-	log.Printf("Returning %d docks", len(docks))
-	json.NewEncoder(w).Encode(docks)
-}
-
-func (h *Handler) HandleUpdateDock(w http.ResponseWriter, r *http.Request) {
-	log.Printf("Received update request for dock: %s", r.URL.Path)
-
-	// Set content type header
-	w.Header().Set("Content-Type", "application/json")
-
-	// Parse dock ID from URL
-	vars := mux.Vars(r)
-	id, err := strconv.Atoi(vars["id"])
-	if err != nil {
-		log.Printf("Error parsing dock ID: %v", err)
-		http.Error(w, "Invalid dock ID", http.StatusBadRequest)
-		return
-	}
-
-	// Parse request body
-	var update struct {
-		Status string `json:"status"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&update); err != nil {
-		log.Printf("Error decoding request body: %v", err)
+	if err := json.NewDecoder(r.Body).Decode(&creds); err != nil {
 		http.Error(w, "Invalid request body", http.StatusBadRequest)
 		return
 	}
 
-	// Convert string to DockStatus
-	dockStatus := models.DockStatus(update.Status)
+	// For now, just check if it matches our hardcoded admin user
+	if creds.Username == "admin" && creds.Password == "admin" {
+		token := "your_jwt_token_here" // In production, generate a real JWT
+		json.NewEncoder(w).Encode(map[string]string{"token": token})
+		return
+	}
 
-	log.Printf("Updating dock %d to status: %s", id, dockStatus)
+	http.Error(w, "Invalid credentials", http.StatusUnauthorized)
+}
 
-	// Update the dock
-	dock, err := h.db.UpdateDockStatus(id, dockStatus)
+func (h *Handler) AuthMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Get token from Authorization header
+		token := r.Header.Get("Authorization")
+		if token == "" {
+			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			return
+		}
+
+		// For now, just check if token exists
+		// In production, validate the JWT token
+		next.ServeHTTP(w, r)
+	})
+}
+
+func (h *Handler) GetAllDocks(w http.ResponseWriter, r *http.Request) {
+	docks, err := h.db.GetAllDocks()
 	if err != nil {
-		log.Printf("Error updating dock status: %v", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	// Broadcast the update
-	log.Printf("Broadcasting dock update to all clients")
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(docks)
+}
+
+func (h *Handler) UpdateDockStatus(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	id, err := strconv.Atoi(vars["id"])
+	if err != nil {
+		http.Error(w, "Invalid dock ID", http.StatusBadRequest)
+		return
+	}
+
+	var update struct {
+		Status string `json:"status"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&update); err != nil {
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	dock, err := h.db.UpdateDockStatus(id, models.DockStatus(update.Status))
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
 	h.hub.BroadcastUpdate(*dock)
 
-	// Return the updated dock
+	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(dock)
 }
 
@@ -126,14 +138,4 @@ func (h *Handler) RegisterRoutes(r *mux.Router) {
 	api.HandleFunc("/docks", h.GetAllDocks).Methods("GET")
 	api.HandleFunc("/docks/{id}", h.UpdateDockStatus).Methods("PUT")
 	// Add other routes as needed
-}
-
-func (h *Handler) TokenHandler(w http.ResponseWriter, r *http.Request) {
-	// Implement your token generation logic here
-	log.Printf("Received request for /api/token")
-
-	// For example purposes, we'll return a simple JSON response
-	response := map[string]string{"token": "your_generated_token"}
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(response)
 }
