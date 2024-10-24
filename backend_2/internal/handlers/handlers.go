@@ -86,8 +86,16 @@ func (h *Handler) HandleUpdateDock(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(dock)
 }
 
+var upgrader = websocket.Upgrader{
+	ReadBufferSize:  1024,
+	WriteBufferSize: 1024,
+	CheckOrigin: func(r *http.Request) bool {
+		return true // Adjust for your origin policy
+	},
+}
+
 func (h *Handler) HandleWebSocket(w http.ResponseWriter, r *http.Request) {
-	conn, err := websocket.Upgrade(w, r, nil, 1024, 1024)
+	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		log.Printf("Failed to upgrade WebSocket connection: %v", err)
 		http.Error(w, "Failed to upgrade WebSocket connection", http.StatusInternalServerError)
