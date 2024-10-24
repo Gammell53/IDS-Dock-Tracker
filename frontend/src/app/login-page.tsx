@@ -16,6 +16,9 @@ export default function LoginPage() {
     setError('');
     
     try {
+      console.log('Attempting login with:', { username, password });
+      console.log('API URL:', process.env.NEXT_PUBLIC_API_URL);
+
       const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/token`, {
         method: 'POST',
         headers: {
@@ -24,18 +27,28 @@ export default function LoginPage() {
         body: JSON.stringify({ username, password }),
       });
 
+      console.log('Response status:', response.status);
       const data = await response.json();
+      console.log('Response data:', data);
 
       if (!response.ok) {
         throw new Error(data.message || 'Invalid credentials');
       }
 
       if (data.success) {
-        // Store token and update auth context
+        console.log('Login successful, setting token');
         await login(data.token);
         
-        // Force a page refresh to update the auth state
-        window.location.href = '/';
+        console.log('Redirecting to home page');
+        // Try using router.push first
+        router.push('/');
+        router.refresh();
+        
+        // If router.push doesn't work, fall back to window.location
+        setTimeout(() => {
+          console.log('Fallback redirect');
+          window.location.href = '/';
+        }, 100);
       } else {
         throw new Error(data.message || 'Login failed');
       }

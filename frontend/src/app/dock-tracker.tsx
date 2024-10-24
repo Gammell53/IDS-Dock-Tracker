@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { PlaneLanding, PlaneIcon, AlertTriangle, Snowflake, Loader, RefreshCw } from 'lucide-react'
+import { useAuth } from '@/context/AuthContext'
 
 type DockStatus = 'available' | 'occupied' | 'out-of-service' | 'deiced'
 type DockLocation = 'southeast' | 'southwest'
@@ -30,6 +31,7 @@ export default function DockTracker() {
   const wsRef = useRef<WebSocket | null>(null)
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null)
   const lastSyncTimestampRef = useRef<number>(0)
+  const { logout } = useAuth()
 
   console.log('DockTracker rendering, loading:', loading, 'docks:', docks);
 

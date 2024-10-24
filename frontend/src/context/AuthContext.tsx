@@ -14,24 +14,28 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
 
   useEffect(() => {
-    // Check for token on mount and set auth state
+    console.log('AuthProvider - Checking token');
     const token = localStorage.getItem('token');
     if (token) {
+      console.log('AuthProvider - Token found, setting authenticated');
       setIsAuthenticated(true);
     }
   }, []);
 
   const login = async (token: string) => {
+    console.log('AuthProvider - Login called');
     localStorage.setItem('token', token);
     setIsAuthenticated(true);
   };
 
   const logout = () => {
+    console.log('AuthProvider - Logout called');
     localStorage.removeItem('token');
     setIsAuthenticated(false);
-    // Force refresh to clear any cached state
-    window.location.href = '/login';
+    window.location.href = '/';
   };
+
+  console.log('AuthProvider - Current auth state:', isAuthenticated);
 
   return (
     <AuthContext.Provider value={{ isAuthenticated, login, logout }}>
