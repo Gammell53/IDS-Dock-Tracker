@@ -17,13 +17,6 @@ import (
 )
 
 func handleLogin(w http.ResponseWriter, r *http.Request) {
-	// Set CORS headers for this specific endpoint
-	w.Header().Set("Access-Control-Allow-Origin", "http://localhost:3000")
-	w.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS")
-	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
-	w.Header().Set("Access-Control-Allow-Credentials", "true")
-
-	// Handle preflight request
 	if r.Method == "OPTIONS" {
 		w.WriteHeader(http.StatusOK)
 		return
@@ -118,19 +111,16 @@ func main() {
 	// Create router
 	r := mux.NewRouter()
 
-	// Apply CORS middleware to all routes
-	r.Use(corsMiddleware)
-
 	// Add login endpoint
-	r.HandleFunc("/api/token", handleLogin).Methods("POST", "OPTIONS")
+	r.HandleFunc("/token", handleLogin).Methods("POST", "OPTIONS")
 
-	// WebSocket endpoint
-	r.HandleFunc("/ws", handler.HandleWebSocket)
-
-	// REST endpoints
+	// API routes
 	api := r.PathPrefix("/api").Subrouter()
 	api.HandleFunc("/docks", handler.HandleGetDocks).Methods("GET", "OPTIONS")
 	api.HandleFunc("/docks/{id}", handler.HandleUpdateDock).Methods("PUT", "OPTIONS")
+
+	// WebSocket endpoint
+	r.HandleFunc("/ws", handler.HandleWebSocket)
 
 	// Get port from environment variable or use default
 	port := getEnv("PORT", "8080")
