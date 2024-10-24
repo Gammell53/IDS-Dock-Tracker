@@ -5,7 +5,7 @@ mkdir -p nginx/certbot/conf
 mkdir -p nginx/certbot/www
 
 # Stop any running containers
-docker compose -f docker-compose.prod.yml down
+docker-compose -f docker-compose.prod.yml down
 
 # Start nginx with HTTP only first
 cat > nginx/nginx.conf.http <<EOF
@@ -26,13 +26,13 @@ http {
 EOF
 
 cp nginx/nginx.conf.http nginx/nginx.conf
-docker compose -f docker-compose.prod.yml up -d nginx
+docker-compose -f docker-compose.prod.yml up -d nginx
 
 # Wait for nginx to start
 sleep 5
 
 # Get the initial SSL certificate
-docker compose -f docker-compose.prod.yml run --rm certbot certonly \
+docker-compose -f docker-compose.prod.yml run --rm certbot certonly \
     --webroot \
     --webroot-path=/var/www/certbot \
     --email your-email@example.com \
@@ -45,7 +45,7 @@ docker compose -f docker-compose.prod.yml run --rm certbot certonly \
 cp nginx/nginx.conf.bak nginx/nginx.conf
 
 # Restart everything with the full configuration
-docker compose -f docker-compose.prod.yml down
-docker compose -f docker-compose.prod.yml up -d
+docker-compose -f docker-compose.prod.yml down
+docker-compose -f docker-compose.prod.yml up -d
 
 echo "SSL certificate installation completed!"
