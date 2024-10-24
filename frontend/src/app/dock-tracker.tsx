@@ -78,7 +78,7 @@ export default function DockTracker() {
     ws.onmessage = async (event) => {
       try {
         console.log('Received WebSocket message:', event.data)
-        let jsonData = JSON.parse(event.data)
+        const jsonData = JSON.parse(event.data)
         
         if (jsonData.type === 'dock_updated') {
           setDocks(prevDocks => 
@@ -86,11 +86,11 @@ export default function DockTracker() {
               dock.id === jsonData.data.id ? {...jsonData.data, name: getDockName(jsonData.data)} : dock
             )
           )
-          setError(null) // Clear any previous errors
+          setError(null)
         } else if (jsonData.type === 'full_sync') {
           setDocks(jsonData.docks.map((dock: Dock) => ({...dock, name: getDockName(dock)})))
           lastSyncTimestampRef.current = jsonData.timestamp
-          setError(null) // Clear any previous errors
+          setError(null)
         } else if (jsonData.type === 'heartbeat') {
           console.log('Received heartbeat, sending acknowledgement');
           ws.send(JSON.stringify({ type: "heartbeat-ack" }));
