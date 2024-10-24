@@ -27,7 +27,7 @@ func NewDB(connectionString string) (*DB, error) {
 func (db *DB) GetAllDocks() ([]models.Dock, error) {
 	rows, err := db.Query("SELECT id, location, number, status, name FROM docks")
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to query docks: %v", err)
 	}
 	defer rows.Close()
 
@@ -35,9 +35,13 @@ func (db *DB) GetAllDocks() ([]models.Dock, error) {
 	for rows.Next() {
 		var d models.Dock
 		if err := rows.Scan(&d.ID, &d.Location, &d.Number, &d.Status, &d.Name); err != nil {
-			return nil, err
+			return nil, fmt.Errorf("failed to scan dock: %v", err)
 		}
 		docks = append(docks, d)
+	}
+
+	if err = rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating rows: %v", err)
 	}
 
 	return docks, nil

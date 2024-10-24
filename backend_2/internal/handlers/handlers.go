@@ -67,13 +67,27 @@ func (h *Handler) HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) HandleGetDocks(w http.ResponseWriter, r *http.Request) {
+	// Set content type header
+	w.Header().Set("Content-Type", "application/json")
+
 	docks, err := h.db.GetAllDocks()
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		// Return proper JSON error response
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]string{
+			"error": "Failed to fetch docks",
+		})
 		return
 	}
 
-	json.NewEncoder(w).Encode(docks)
+	// Return JSON response
+	if err := json.NewEncoder(w).Encode(docks); err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]string{
+			"error": "Error encoding response",
+		})
+		return
+	}
 }
 
 func (h *Handler) HandleUpdateDock(w http.ResponseWriter, r *http.Request) {
