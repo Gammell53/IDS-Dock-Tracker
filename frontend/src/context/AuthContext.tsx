@@ -12,6 +12,7 @@ const AuthContext = createContext<AuthContextType | null>(null);
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [isInitialized, setIsInitialized] = useState(false);
 
   useEffect(() => {
     console.log('AuthProvider - Checking token');
@@ -20,6 +21,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       console.log('AuthProvider - Token found, setting authenticated');
       setIsAuthenticated(true);
     }
+    setIsInitialized(true);
   }, []);
 
   const login = async (token: string) => {
@@ -32,10 +34,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     console.log('AuthProvider - Logout called');
     localStorage.removeItem('token');
     setIsAuthenticated(false);
-    window.location.href = '/';
   };
 
-  console.log('AuthProvider - Current auth state:', isAuthenticated);
+  if (!isInitialized) {
+    return null; // or a loading spinner
+  }
 
   return (
     <AuthContext.Provider value={{ isAuthenticated, login, logout }}>

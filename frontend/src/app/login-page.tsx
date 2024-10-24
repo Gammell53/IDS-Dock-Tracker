@@ -2,14 +2,12 @@
 
 import { useState } from 'react';
 import { useAuth } from '@/context/AuthContext';
-import { useRouter } from 'next/navigation';
 
 export default function LoginPage() {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const { login } = useAuth();
-  const router = useRouter();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -38,17 +36,6 @@ export default function LoginPage() {
       if (data.success) {
         console.log('Login successful, setting token');
         await login(data.token);
-        
-        console.log('Redirecting to home page');
-        // Try using router.push first
-        router.push('/');
-        router.refresh();
-        
-        // If router.push doesn't work, fall back to window.location
-        setTimeout(() => {
-          console.log('Fallback redirect');
-          window.location.href = '/';
-        }, 100);
       } else {
         throw new Error(data.message || 'Login failed');
       }
