@@ -30,12 +30,15 @@ export default function LoginPage() {
         throw new Error(data.message || 'Invalid credentials');
       }
 
-      // Store token and update auth context
-      localStorage.setItem('token', data.token);
-      await login(data.token); // Update auth context
-
-      // Use Next.js router for navigation
-      router.push('/');
+      if (data.success) {
+        // Store token and update auth context
+        await login(data.token);
+        
+        // Force a page refresh to update the auth state
+        window.location.href = '/';
+      } else {
+        throw new Error(data.message || 'Login failed');
+      }
       
     } catch (error: any) {
       console.error('Login error:', error);

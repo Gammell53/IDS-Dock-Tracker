@@ -14,7 +14,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
 
   useEffect(() => {
-    // Check for token on mount
+    // Check for token on mount and set auth state
     const token = localStorage.getItem('token');
     if (token) {
       setIsAuthenticated(true);
@@ -29,6 +29,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const logout = () => {
     localStorage.removeItem('token');
     setIsAuthenticated(false);
+    // Force refresh to clear any cached state
+    window.location.href = '/login';
   };
 
   return (
