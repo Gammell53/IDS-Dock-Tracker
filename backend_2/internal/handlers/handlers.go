@@ -114,11 +114,18 @@ func (h *Handler) HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 	go client.WritePump()
 }
 
-func (h *Handler) RegisterRoutes(router *mux.Router) {
-	router.HandleFunc("/api/token", h.TokenHandler).Methods("POST")
-	router.HandleFunc("/api/docks", h.HandleGetDocks).Methods("GET")
-	router.HandleFunc("/api/docks/{id}", h.HandleUpdateDock).Methods("PUT")
-	router.HandleFunc("/ws", h.HandleWebSocket)
+func (h *Handler) RegisterRoutes(r *mux.Router) {
+	// Auth routes
+	r.HandleFunc("/token", h.HandleToken).Methods("POST")
+	r.HandleFunc("/ws", h.HandleWebSocket)
+
+	// Protected routes
+	api := r.PathPrefix("/").Subrouter()
+	api.Use(h.AuthMiddleware)
+
+	api.HandleFunc("/docks", h.GetAllDocks).Methods("GET")
+	api.HandleFunc("/docks/{id}", h.UpdateDockStatus).Methods("PUT")
+	// Add other routes as needed
 }
 
 func (h *Handler) TokenHandler(w http.ResponseWriter, r *http.Request) {

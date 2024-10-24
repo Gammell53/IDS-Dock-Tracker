@@ -52,19 +52,45 @@ func NewDB(connectionString string) (*DB, error) {
 }
 
 func (db *DB) InitializeDB() error {
+	// Create users table first
 	_, err := db.Exec(`
+		CREATE TABLE IF NOT EXISTS users (
+			id SERIAL PRIMARY KEY,
+			username VARCHAR(50) UNIQUE NOT NULL,
+			password_hash VARCHAR(255) NOT NULL,
+			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+		)
+	`)
+	if err != nil {
+		return fmt.Errorf("failed to create users table: %v", err)
+	}
+
+	// Then create docks table
+	_, err = db.Exec(`
 		CREATE TABLE IF NOT EXISTS docks (
 			id SERIAL PRIMARY KEY,
 			location VARCHAR(50) NOT NULL,
 			number INTEGER NOT NULL,
 			status VARCHAR(50) NOT NULL,
 			name VARCHAR(50) NOT NULL,
+			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 			UNIQUE(location, number),
 			UNIQUE(name)
 		)
 	`)
 	if err != nil {
 		return fmt.Errorf("failed to create docks table: %v", err)
+	}
+
+	// Insert default admin user if it doesn't exist
+	_, err = db.Exec(`
+		INSERT INTO users (username, password_hash)
+		VALUES ($1, $2)
+		ON CONFLICT (username) DO NOTHING
+	`, "admin", "$2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy") // password: admin
+	if err != nil {
+		return fmt.Errorf("failed to create default admin user: %v", err)
 	}
 
 	return nil
