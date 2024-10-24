@@ -1,11 +1,15 @@
 'use client';
 
 import { useState } from 'react';
+import { useAuth } from '@/context/AuthContext';
+import { useRouter } from 'next/navigation';
 
 export default function LoginPage() {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
+  const { login } = useAuth();
+  const router = useRouter();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -20,17 +24,22 @@ export default function LoginPage() {
         body: JSON.stringify({ username, password }),
       });
 
+      const data = await response.json();
+
       if (!response.ok) {
-        throw new Error('Invalid credentials');
+        throw new Error(data.message || 'Invalid credentials');
       }
 
-      const data = await response.json();
+      // Store token and update auth context
       localStorage.setItem('token', data.token);
-      window.location.href = '/docks';
+      await login(data.token); // Update auth context
+
+      // Use Next.js router for navigation
+      router.push('/');
       
-    } catch (error) {
+    } catch (error: any) {
       console.error('Login error:', error);
-      setError('Failed to login. Please try again.');
+      setError(error.message || 'Failed to login. Please try again.');
     }
   };
 
