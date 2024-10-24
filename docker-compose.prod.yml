@@ -30,8 +30,8 @@ services:
       context: ./frontend
       dockerfile: Dockerfile.prod
     environment:
-      - NEXT_PUBLIC_API_URL=https://idsdock.com/api
-      - NEXT_PUBLIC_WS_URL=wss://idsdock.com/ws
+      - NEXT_PUBLIC_API_URL=http://idsdock.com/api
+      - NEXT_PUBLIC_WS_URL=ws://idsdock.com/ws
     depends_on:
       - backend
     restart: always
