@@ -44,16 +44,13 @@ func handleLogin(w http.ResponseWriter, r *http.Request) {
 
 func corsMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Access-Control-Allow-Origin", "https://idsdock.com")
+		w.Header().Set("Access-Control-Allow-Origin", "*")
 		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
 		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
-		w.Header().Set("Access-Control-Allow-Credentials", "true")
-
 		if r.Method == "OPTIONS" {
 			w.WriteHeader(http.StatusOK)
 			return
 		}
-
 		next.ServeHTTP(w, r)
 	})
 }
@@ -81,7 +78,7 @@ func authMiddleware(next http.Handler) http.Handler {
 }
 
 func main() {
-	// Get database connection details from environment variables
+	// Get database connection details from environment variables or use defaults
 	dbHost := getEnv("DB_HOST", "localhost")
 	dbPort := getEnv("DB_PORT", "5432")
 	dbUser := getEnv("DB_USER", "postgres")
@@ -123,29 +120,29 @@ func main() {
 	}
 
 	// Create and start WebSocket hub
-	hub := websocket.NewHub()
+	hub := websocket.NewHub(db) // Pass the database connection
 	go hub.Run()
-
-	// Initialize handlers
-	handler := handlers.NewHandler(db, hub)
 
 	// Create router
 	r := mux.NewRouter()
 
-	// Add CORS middleware
+	// Apply CORS middleware to all routes
 	r.Use(corsMiddleware)
+
+	// Add login endpoint
+	r.HandleFunc("/api/token", handleLogin).Methods("POST", "OPTIONS")
 
 	// API routes
 	api := r.PathPrefix("/api").Subrouter()
-	api.HandleFunc("/docks", handler.HandleGetDocks).Methods("GET", "OPTIONS")
-	api.HandleFunc("/docks/{id}", handler.HandleUpdateDock).Methods("PUT", "OPTIONS")
-	api.HandleFunc("/token", handleLogin).Methods("POST", "OPTIONS")
+	api.HandleFunc("/docks", handlers.HandleGetDocks).Methods("GET", "OPTIONS")
+	api.HandleFunc("/docks/{id}", handlers.HandleUpdateDock).Methods("PUT", "OPTIONS")
 
 	// WebSocket endpoint
-	r.HandleFunc("/ws", handler.HandleWebSocket)
+	r.HandleFunc("/ws", handlers.HandleWebSocket)
 
-	// Start server
+	// Get port from environment variable or use default
 	port := getEnv("PORT", "8080")
+
 	log.Printf("Server starting on port %s", port)
 	if err := http.ListenAndServe(":"+port, r); err != nil {
 		log.Fatal("Failed to start server:", err)
