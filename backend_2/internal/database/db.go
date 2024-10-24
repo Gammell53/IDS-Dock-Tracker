@@ -3,6 +3,7 @@ package database
 import (
 	"database/sql"
 	"fmt"
+	"log"
 	"time"
 
 	"backend_2/internal/models"
@@ -93,12 +94,41 @@ func (db *DB) InitializeDB() error {
 		return fmt.Errorf("failed to create default admin user: %v", err)
 	}
 
+	// Insert default docks if they don't exist
+	defaultDocks := []struct {
+		Location string
+		Number   int
+		Status   string
+		Name     string
+	}{
+		{"southeast", 1, "available", "SE-1"},
+		{"southeast", 2, "available", "SE-2"},
+		{"southeast", 3, "available", "SE-3"},
+		{"southwest", 1, "available", "SW-1"},
+		{"southwest", 2, "available", "SW-2"},
+		{"southwest", 3, "available", "SW-3"},
+	}
+
+	for _, dock := range defaultDocks {
+		_, err = db.Exec(`
+			INSERT INTO docks (location, number, status, name)
+			VALUES ($1, $2, $3, $4)
+			ON CONFLICT (location, number) DO NOTHING
+		`, dock.Location, dock.Number, dock.Status, dock.Name)
+		if err != nil {
+			return fmt.Errorf("failed to insert default dock %s: %v", dock.Name, err)
+		}
+	}
+
 	return nil
 }
 
 func (db *DB) GetAllDocks() ([]models.Dock, error) {
-	rows, err := db.Query("SELECT id, location, number, status, name FROM docks")
+	log.Printf("Fetching all docks from database")
+
+	rows, err := db.Query("SELECT id, location, number, status, name FROM docks ORDER BY location, number")
 	if err != nil {
+		log.Printf("Error querying docks: %v", err)
 		return nil, fmt.Errorf("failed to query docks: %v", err)
 	}
 	defer rows.Close()
@@ -107,15 +137,18 @@ func (db *DB) GetAllDocks() ([]models.Dock, error) {
 	for rows.Next() {
 		var d models.Dock
 		if err := rows.Scan(&d.ID, &d.Location, &d.Number, &d.Status, &d.Name); err != nil {
+			log.Printf("Error scanning dock row: %v", err)
 			return nil, fmt.Errorf("failed to scan dock: %v", err)
 		}
 		docks = append(docks, d)
 	}
 
 	if err = rows.Err(); err != nil {
+		log.Printf("Error iterating rows: %v", err)
 		return nil, fmt.Errorf("error iterating rows: %v", err)
 	}
 
+	log.Printf("Found %d docks", len(docks))
 	return docks, nil
 }
 

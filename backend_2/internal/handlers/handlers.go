@@ -24,24 +24,57 @@ func NewHandler(db *database.DB, hub *ws.Hub) *Handler {
 }
 
 func (h *Handler) HandleToken(w http.ResponseWriter, r *http.Request) {
+	// Set CORS headers
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS")
+	w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+
+	// Handle preflight request
+	if r.Method == "OPTIONS" {
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+
+	// Set content type
+	w.Header().Set("Content-Type", "application/json")
+
 	var creds struct {
 		Username string `json:"username"`
 		Password string `json:"password"`
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&creds); err != nil {
+		log.Printf("Error decoding credentials: %v", err)
 		http.Error(w, "Invalid request body", http.StatusBadRequest)
 		return
 	}
 
+	log.Printf("Login attempt for user: %s", creds.Username)
+
 	// For now, just check if it matches our hardcoded admin user
 	if creds.Username == "admin" && creds.Password == "admin" {
-		token := "your_jwt_token_here" // In production, generate a real JWT
-		json.NewEncoder(w).Encode(map[string]string{"token": token})
+		response := map[string]interface{}{
+			"success": true,
+			"token":   "your_jwt_token_here", // In production, generate a real JWT
+			"user": map[string]interface{}{
+				"username": creds.Username,
+				"role":     "admin",
+			},
+		}
+
+		if err := json.NewEncoder(w).Encode(response); err != nil {
+			log.Printf("Error encoding response: %v", err)
+			http.Error(w, "Internal server error", http.StatusInternalServerError)
+		}
 		return
 	}
 
-	http.Error(w, "Invalid credentials", http.StatusUnauthorized)
+	// Invalid credentials
+	w.WriteHeader(http.StatusUnauthorized)
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"success": false,
+		"message": "Invalid credentials",
+	})
 }
 
 func (h *Handler) AuthMiddleware(next http.Handler) http.Handler {
