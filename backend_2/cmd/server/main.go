@@ -135,15 +135,14 @@ func main() {
 	// Add CORS middleware
 	r.Use(corsMiddleware)
 
-	// Public endpoints
-	r.HandleFunc("/token", handleLogin).Methods("POST", "OPTIONS")
-	r.HandleFunc("/ws", handler.HandleWebSocket)
-
-	// API routes with authentication
+	// API routes
 	api := r.PathPrefix("/api").Subrouter()
-	api.Use(authMiddleware)
 	api.HandleFunc("/docks", handler.HandleGetDocks).Methods("GET", "OPTIONS")
 	api.HandleFunc("/docks/{id}", handler.HandleUpdateDock).Methods("PUT", "OPTIONS")
+	api.HandleFunc("/token", handleLogin).Methods("POST", "OPTIONS")
+
+	// WebSocket endpoint
+	r.HandleFunc("/ws", handler.HandleWebSocket)
 
 	// Start server
 	port := getEnv("PORT", "8080")

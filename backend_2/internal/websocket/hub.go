@@ -17,6 +17,7 @@ type Hub struct {
 	Broadcast  chan []byte // Capital B
 	Register   chan *Client
 	Unregister chan *Client
+	db         *models.DB
 }
 
 type Client struct {
@@ -25,12 +26,13 @@ type Client struct {
 	Hub  *Hub
 }
 
-func NewHub() *Hub {
+func NewHub(db *models.DB) *Hub {
 	return &Hub{
 		clients:    make(map[string]*Client),
 		Broadcast:  make(chan []byte), // Capital B
 		Register:   make(chan *Client),
 		Unregister: make(chan *Client),
+		db:         db,
 	}
 }
 
@@ -43,6 +45,14 @@ func (h *Hub) Run() {
 			h.mu.Unlock()
 			log.Printf("Client %s connected. Total clients: %d", client.ID, len(h.clients))
 
+			// Send full sync on new connection
+			docks, err := h.db.GetAllDocks()
+			if err != nil {
+				log.Printf("Error fetching docks for full sync: %v", err)
+				continue
+			}
+			h.BroadcastFullSync(docks)
+
 		case client := <-h.Unregister:
 			h.mu.Lock()
 			if _, ok := h.clients[client.ID]; ok {
@@ -52,7 +62,7 @@ func (h *Hub) Run() {
 			h.mu.Unlock()
 			log.Printf("Client %s disconnected. Total clients: %d", client.ID, len(h.clients))
 
-		case message := <-h.Broadcast: // Capital B
+		case message := <-h.Broadcast:
 			h.mu.RLock()
 			log.Printf("Broadcasting message to %d clients", len(h.clients))
 			for id, client := range h.clients {

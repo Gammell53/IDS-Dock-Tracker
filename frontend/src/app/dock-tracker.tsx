@@ -35,6 +35,7 @@ export default function DockTracker() {
 
   const fetchDocks = useCallback(async () => {
     try {
+      console.log('[fetchDocks] Fetching docks...')
       const token = localStorage.getItem('token')
       if (!token) {
         throw new Error('No token found')
@@ -52,7 +53,7 @@ export default function DockTracker() {
       setError(null) // Clear any previous errors
       setLoading(false)
     } catch (error) {
-      console.error('Error fetching docks:', error)
+      console.error('[fetchDocks] Error fetching docks:', error)
       if (error instanceof Error) {
         setError(error.message)
       } else {
@@ -64,66 +65,74 @@ export default function DockTracker() {
 
   const setupWebSocket = useCallback(() => {
     if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-      console.log('[WebSocket] Connection already open');
-      return;
+      console.log('[WebSocket] Connection already open')
+      return
     }
 
-    console.log('[WebSocket] Setting up new connection');
-    const ws = new WebSocket(WS_URL);
+    console.log('[WebSocket] Setting up new connection')
+    const ws = new WebSocket(WS_URL)
 
     ws.onopen = () => {
-      console.log('[WebSocket] Connection opened');
-      ws.send(JSON.stringify({ type: "request_full_sync" }));
-      setError(null);
-    };
+      console.log('[WebSocket] Connection opened')
+      ws.send(JSON.stringify({ type: "request_full_sync" }))
+      setError(null) // Clear any previous errors
+    }
 
     ws.onmessage = async (event) => {
       try {
-        console.log('[WebSocket] Received message:', event.data);
-        const jsonData = JSON.parse(event.data);
+        console.log('[WebSocket] Received message:', event.data)
+        const jsonData = JSON.parse(event.data)
         
         if (jsonData.type === 'dock_updated') {
-          console.log('[WebSocket] Processing dock update:', jsonData.data);
+          console.log('[WebSocket] Processing dock update:', jsonData.data)
           setDocks(prevDocks => {
             const newDocks = prevDocks.map(dock => 
               dock.id === jsonData.data.id ? {...jsonData.data, name: getDockName(jsonData.data)} : dock
-            );
-            console.log('[WebSocket] Updated docks:', newDocks);
-            return newDocks;
-          });
-          setError(null);
+            )
+            console.log('[WebSocket] Updated docks:', newDocks)
+            return newDocks
+          })
+          setError(null)
         } else if (jsonData.type === 'full_sync') {
-          console.log('[WebSocket] Processing full sync with', jsonData.docks.length, 'docks');
-          setDocks(jsonData.docks.map((dock: Dock) => ({...dock, name: getDockName(dock)})));
-          lastSyncTimestampRef.current = jsonData.timestamp;
-          setError(null);
-        } else if (jsonData.type === 'heartbeat') {
-          console.log('Received heartbeat, sending acknowledgement');
-          ws.send(JSON.stringify({ type: "heartbeat-ack" }));
+          console.log('[WebSocket] Processing full sync with', jsonData.docks.length, 'docks')
+          setDocks(jsonData.docks.map((dock: Dock) => ({...dock, name: getDockName(dock)})))
+          lastSyncTimestampRef.current = jsonData.timestamp
+          setError(null)
         }
       } catch (error) {
-        console.error('[WebSocket] Error processing message:', error);
+        console.error('[WebSocket] Error processing message:', error)
       }
-    };
+    }
 
-    ws.onclose = (event) => {
-      console.log(`WebSocket connection closed. Code: ${event.code}, Reason: ${event.reason}`);
-      wsRef.current = null;
+    ws.onclose = () => {
+      console.log('[WebSocket] Connection closed, attempting to reconnect...')
       if (reconnectTimeoutRef.current) {
-        clearTimeout(reconnectTimeoutRef.current);
+        clearTimeout(reconnectTimeoutRef.current)
       }
-      reconnectTimeoutRef.current = setTimeout(() => {
-        console.log('Attempting to reconnect WebSocket...');
-        setupWebSocket();
-      }, 5000);
-    };
+      reconnectTimeoutRef.current = setTimeout(setupWebSocket, 5000)
+    }
 
     ws.onerror = (error) => {
-      console.error('WebSocket error:', error);
-    };
+      console.error('[WebSocket] Error:', error)
+      setError('WebSocket error occurred')
+    }
 
-    wsRef.current = ws;
+    wsRef.current = ws
   }, [])
+
+  useEffect(() => {
+    fetchDocks()
+    setupWebSocket()
+
+    return () => {
+      if (wsRef.current) {
+        wsRef.current.close()
+      }
+      if (reconnectTimeoutRef.current) {
+        clearTimeout(reconnectTimeoutRef.current)
+      }
+    }
+  }, [fetchDocks, setupWebSocket])
 
   const checkDataFreshness = useCallback(() => {
     const now = Date.now();
