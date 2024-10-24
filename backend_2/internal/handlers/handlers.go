@@ -105,3 +105,15 @@ func (h *Handler) HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 	go client.ReadPump()
 	go client.WritePump()
 }
+
+func RegisterRoutes(router *mux.Router) {
+	// ... existing routes ...
+
+	router.HandleFunc("/api/token", TokenHandler).Methods("POST")
+
+	// ... existing routes ...
+}
+
+func TokenHandler(w http.ResponseWriter, r *http.Request) {
+	// Implement your token generation logic here
+}
