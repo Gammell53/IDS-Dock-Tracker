@@ -8,17 +8,18 @@ import (
 
 	"backend_2/internal/database"
 	"backend_2/internal/models"
-	"backend_2/internal/websocket"
+	ws "backend_2/internal/websocket" // Alias to avoid conflict
 
 	"github.com/gorilla/mux"
+	"github.com/gorilla/websocket"
 )
 
 type Handler struct {
 	db  *database.DB
-	hub *websocket.Hub
+	hub *ws.Hub // Use alias to avoid conflict
 }
 
-func NewHandler(db *database.DB, hub *websocket.Hub) *Handler {
+func NewHandler(db *database.DB, hub *ws.Hub) *Handler {
 	return &Handler{db: db, hub: hub}
 }
 
@@ -86,14 +87,14 @@ func (h *Handler) HandleUpdateDock(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) HandleWebSocket(w http.ResponseWriter, r *http.Request) {
-	conn, err := websocket.Upgrade(w, r, nil)
+	conn, err := websocket.Upgrade(w, r, nil, 1024, 1024)
 	if err != nil {
 		log.Printf("Failed to upgrade WebSocket connection: %v", err)
 		http.Error(w, "Failed to upgrade WebSocket connection", http.StatusInternalServerError)
 		return
 	}
 
-	client := &websocket.Client{
+	client := &ws.Client{ // Use alias to avoid conflict
 		ID:   r.RemoteAddr,
 		Conn: conn,
 		Hub:  h.hub,
