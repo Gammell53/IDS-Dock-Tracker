@@ -28,9 +28,7 @@ export default function LoginPage() {
 
       const data = await response.json();
       localStorage.setItem('token', data.token);
-      
-      // Use router for navigation
-      router.push('/docks');
+      window.location.href = '/docks';
       
     } catch (error) {
       console.error('Login error:', error);
