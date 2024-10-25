@@ -101,12 +101,23 @@ func (db *DB) InitializeDB() error {
 		Status   string
 		Name     string
 	}{
+		// Southwest docks
+		{"southwest", 1, "available", "H84"},
+		{"southwest", 2, "available", "H86"},
+		{"southwest", 3, "available", "H87"},
+		{"southwest", 4, "available", "H89"},
+		{"southwest", 5, "available", "H90"},
+		{"southwest", 6, "available", "H92"},
+		{"southwest", 7, "available", "H93"},
+		{"southwest", 8, "available", "H95"},
+		{"southwest", 9, "available", "H96"},
+		{"southwest", 10, "available", "H98"},
+		{"southwest", 11, "available", "H99"},
+		
+		// Southeast docks
 		{"southeast", 1, "available", "SE-1"},
 		{"southeast", 2, "available", "SE-2"},
-		{"southeast", 3, "available", "SE-3"},
-		{"southwest", 1, "available", "SW-1"},
-		{"southwest", 2, "available", "SW-2"},
-		{"southwest", 3, "available", "SW-3"},
+		{"southeast", 3, "available", "SE-3"}
 	}
 
 	for _, dock := range defaultDocks {
