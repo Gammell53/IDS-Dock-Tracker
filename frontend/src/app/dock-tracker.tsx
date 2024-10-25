@@ -236,10 +236,12 @@ export default function DockTracker() {
     );
 
     try {
-      const response = await fetch(`/api/docks/${dockId}/status`, {
+      const token = localStorage.getItem('token');
+      const response = await fetch(`${API_URL}/docks/${dockId}/status`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`, // Include the Authorization header if needed
         },
         body: JSON.stringify({ status: newStatus }),
       });
