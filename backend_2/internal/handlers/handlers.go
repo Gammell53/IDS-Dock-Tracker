@@ -5,6 +5,7 @@ import (
 	"log"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"backend_2/internal/database"
 	"backend_2/internal/models"
@@ -79,15 +80,27 @@ func (h *Handler) HandleToken(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) AuthMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		log.Printf("Received request for %s", r.URL.Path)
+		log.Printf("Authorization header: %s", r.Header.Get("Authorization"))
+
 		// Get token from Authorization header
-		token := r.Header.Get("Authorization")
-		if token == "" {
+		authHeader := r.Header.Get("Authorization")
+		if authHeader == "" {
 			http.Error(w, "Unauthorized", http.StatusUnauthorized)
 			return
 		}
 
+		// Expected format: "Bearer <token>"
+		parts := strings.SplitN(authHeader, " ", 2)
+		if len(parts) != 2 || strings.ToLower(parts[0]) != "bearer" {
+			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			return
+		}
+		token := parts[1]
+
 		// For now, just check if token exists
 		// In production, validate the JWT token
+
 		next.ServeHTTP(w, r)
 	})
 }
@@ -170,9 +183,6 @@ func (h *Handler) RegisterRoutes(router *mux.Router) {
 	api.Use(h.AuthMiddleware)
 
 	api.HandleFunc("/docks", h.GetAllDocks).Methods("GET")
-	api.HandleFunc("/docks/{id}", h.UpdateDockStatus).Methods("PUT")
-	// Add other routes as needed
-
-	// Add this route for updating dock status
-	router.HandleFunc("/docks/{id}/status", h.UpdateDockStatus).Methods("PUT")
+	api.HandleFunc("/docks/{id}/status", h.UpdateDockStatus).Methods("PUT")
+	// Remove duplicate or conflicting routes
 }

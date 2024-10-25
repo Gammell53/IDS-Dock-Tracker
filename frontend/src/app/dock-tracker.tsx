@@ -241,7 +241,7 @@ export default function DockTracker() {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`, // Include the Authorization header if needed
+          'Authorization': `Bearer ${token}`, // Include the Authorization header
         },
         body: JSON.stringify({ status: newStatus }),
       });
