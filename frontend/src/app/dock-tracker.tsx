@@ -19,7 +19,7 @@ interface Dock {
 // Update the southwest dock names array
 const southwestDockNames = ['H84', 'H86', 'H87', 'H89', 'H90', 'H92', 'H93', 'H95', 'H96', 'H98', 'H99']
 
-// Use an environment variable for the API URL
+// Update these constants to match your nginx configuration
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'https://idsdock.com/api';
 const WS_URL = process.env.NEXT_PUBLIC_WS_URL || 'wss://idsdock.com/ws';
 const STALE_DATA_THRESHOLD = 5 * 60 * 1000; // 5 minutes in milliseconds
@@ -230,17 +230,21 @@ export default function DockTracker() {
       if (!token) {
         throw new Error('No token found')
       }
+      console.log('[fetchDocks] Using token:', token) // Add this log
       const response = await fetch(`${API_URL}/docks`, {
         headers: {
           'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json', // Add this header
         },
       })
       if (!response.ok) {
-        throw new Error('Failed to fetch docks')
+        const errorData = await response.json().catch(() => ({}));
+        console.error('[fetchDocks] Response not OK:', response.status, errorData);
+        throw new Error(errorData.message || 'Failed to fetch docks')
       }
       const data = await response.json()
       setDocks(data.map((dock: Dock) => ({...dock, name: getDockName(dock)})))
-      setError(null) // Clear any previous errors
+      setError(null)
       setLoading(false)
     } catch (error) {
       console.error('[fetchDocks] Error fetching docks:', error)
