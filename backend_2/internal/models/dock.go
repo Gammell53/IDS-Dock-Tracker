@@ -22,8 +22,9 @@ type Dock struct {
 }
 
 type DockUpdate struct {
-	Type string `json:"type"`
-	Data Dock   `json:"data"`
+	Type      string `json:"type"`
+	Data      Dock   `json:"data"`
+	Timestamp int64  `json:"timestamp"` // Add this field
 }
 
 type FullSync struct {
