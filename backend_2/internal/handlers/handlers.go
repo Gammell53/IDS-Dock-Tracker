@@ -126,7 +126,7 @@ func (h *Handler) UpdateDockStatus(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Broadcast the update to all connected clients
-	go h.hub.BroadcastUpdate(*dock)
+	h.hub.BroadcastUpdate(*dock)
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(dock)

@@ -89,6 +89,9 @@ func (h *Hub) broadcastMessage(message []byte) {
 }
 
 func (h *Hub) BroadcastUpdate(dock models.Dock) {
+	h.mu.Lock() // Add mutex lock
+	defer h.mu.Unlock()
+
 	// First update the database
 	updatedDock, err := h.db.GetDockByID(dock.ID)
 	if err != nil {
@@ -109,7 +112,12 @@ func (h *Hub) BroadcastUpdate(dock models.Dock) {
 	}
 
 	log.Printf("Broadcasting dock update: %s", string(message))
-	h.Broadcast <- message
+	select {
+	case h.Broadcast <- message:
+		log.Printf("Successfully queued broadcast message")
+	default:
+		log.Printf("Warning: Broadcast channel full, message dropped")
+	}
 
 	// Send a full sync after update to ensure consistency
 	docks, err := h.db.GetAllDocks()
