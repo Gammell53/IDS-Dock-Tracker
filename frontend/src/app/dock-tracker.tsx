@@ -67,20 +67,34 @@ export default function DockTracker() {
 
   const handleWebSocketMessage = useCallback((event: MessageEvent) => {
     try {
-      const data = JSON.parse(event.data);
-      console.log('WebSocket message received:', data);
+        const data = JSON.parse(event.data);
+        console.log('WebSocket message received:', data);
 
-      if (data.type === 'dock_updated') {
-        setDocks(prevDocks => {
-          return prevDocks.map(dock => 
-            dock.id === data.data.id ? { ...data.data, name: getDockName(data.data) } : dock
-          );
-        });
-      } else if (data.type === 'full_sync') {
-        setDocks(data.docks.map((dock: Dock) => ({...dock, name: getDockName(dock)})));
-      }
+        if (data.type === 'dock_updated') {
+            setDocks(prevDocks => {
+                // Check if we already have this update based on timestamp
+                if (data.timestamp <= lastSyncTimestampRef.current) {
+                    console.log('Ignoring outdated update');
+                    return prevDocks;
+                }
+                lastSyncTimestampRef.current = data.timestamp;
+                
+                return prevDocks.map(dock => 
+                    dock.id === data.data.id ? { ...data.data, name: getDockName(data.data) } : dock
+                );
+            });
+        } else if (data.type === 'full_sync') {
+            if (data.timestamp > lastSyncTimestampRef.current) {
+                lastSyncTimestampRef.current = data.timestamp;
+                setDocks(data.docks.map((dock: Dock) => ({...dock, name: getDockName(dock)})));
+            }
+        }
     } catch (error) {
-      console.error('Error processing WebSocket message:', error);
+        console.error('Error processing WebSocket message:', error);
+        // Request a full sync if we encounter an error
+        if (wsRef.current?.readyState === WebSocket.OPEN) {
+            wsRef.current.send(JSON.stringify({ type: "request_full_sync" }));
+        }
     }
   }, []);
 
@@ -183,27 +197,41 @@ export default function DockTracker() {
 
   const updateDockStatus = async (id: number, status: DockStatus) => {
     try {
-      const token = localStorage.getItem('token');
-      
-      // Send update to server
-      const response = await fetch(`${API_URL}/docks/${id}`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
-        },
-        body: JSON.stringify({ status }),
-      });
+        const token = localStorage.getItem('token');
+        
+        // Optimistic update with timestamp check
+        const updateTimestamp = Date.now();
+        setDocks(prevDocks => 
+            prevDocks.map(dock => 
+                dock.id === id ? {...dock, status, _lastUpdate: updateTimestamp} : dock
+            )
+        );
 
-      if (!response.ok) {
-        throw new Error('Failed to update dock status');
-      }
+        const response = await fetch(`${API_URL}/docks/${id}`, {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`,
+            },
+            body: JSON.stringify({ status }),
+        });
 
-      // Server will broadcast the update via WebSocket
-      // No need to update state here as we'll receive the update via WebSocket
+        if (!response.ok) {
+            throw new Error('Failed to update dock status');
+        }
+
+        // Request a full sync after update to ensure consistency
+        if (wsRef.current?.readyState === WebSocket.OPEN) {
+            wsRef.current.send(JSON.stringify({ type: "request_full_sync" }));
+        }
     } catch (error) {
-      console.error('Error updating dock status:', error);
-      // Optionally show an error message to the user
+        console.error('Error updating dock status:', error);
+        // Revert optimistic update and request full sync
+        if (wsRef.current?.readyState === WebSocket.OPEN) {
+            wsRef.current.send(JSON.stringify({ type: "request_full_sync" }));
+        } else {
+            fetchDocks();
+        }
     }
   };
 

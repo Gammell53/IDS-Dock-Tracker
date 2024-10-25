@@ -25,6 +25,7 @@ type Client struct {
 	ID   string
 	Conn *websocket.Conn
 	Hub  *Hub
+	Send chan []byte // Add this line
 }
 
 func NewHub(db *database.DB) *Hub { // Use the correct package for DB
@@ -82,8 +83,9 @@ func (h *Hub) Run() {
 
 func (h *Hub) BroadcastUpdate(dock models.Dock) {
 	update := models.DockUpdate{
-		Type: "dock_updated",
-		Data: dock,
+		Type:      "dock_updated",
+		Data:      dock,
+		Timestamp: time.Now().Unix(), // Add timestamp
 	}
 
 	message, err := json.Marshal(update)
@@ -95,15 +97,18 @@ func (h *Hub) BroadcastUpdate(dock models.Dock) {
 	h.mu.RLock()
 	log.Printf("Broadcasting dock update to %d clients", len(h.clients))
 	for id, client := range h.clients {
-		// Send to each client individually to avoid blocking
-		go func(clientID string, c *Client, msg []byte) {
-			if err := c.Conn.WriteMessage(websocket.TextMessage, msg); err != nil {
-				log.Printf("Error sending message to client %s: %v", clientID, err)
-				h.Unregister <- c
-			} else {
-				log.Printf("Message sent successfully to client %s", clientID)
-			}
-		}(id, client, message)
+		select {
+		case client.Send <- message:
+			log.Printf("Queued message for client %s", id)
+		default:
+			log.Printf("Client %s message buffer full, closing connection", id)
+			h.mu.RUnlock()
+			h.mu.Lock()
+			delete(h.clients, id)
+			client.Conn.Close()
+			h.mu.Unlock()
+			h.mu.RLock()
+		}
 	}
 	h.mu.RUnlock()
 }
@@ -152,7 +157,7 @@ func (c *Client) WritePump() {
 	}()
 	for {
 		select {
-		case message, ok := <-c.Hub.Broadcast:
+		case message, ok := <-c.Send:
 			c.Conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
 			if !ok {
 				c.Conn.WriteMessage(websocket.CloseMessage, []byte{})
@@ -164,6 +169,13 @@ func (c *Client) WritePump() {
 				return
 			}
 			w.Write(message)
+
+			// Add queued messages to the current websocket message
+			n := len(c.Send)
+			for i := 0; i < n; i++ {
+				w.Write([]byte{'\n'})
+				w.Write(<-c.Send)
+			}
 
 			if err := w.Close(); err != nil {
 				return
