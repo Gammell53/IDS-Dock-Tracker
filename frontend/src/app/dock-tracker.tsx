@@ -3,6 +3,7 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { PlaneLanding, PlaneIcon, AlertTriangle, Snowflake, Loader, RefreshCw, Eye } from 'lucide-react'
 import { useAuth } from '@/context/AuthContext'
+import { useTheme } from '@/context/ThemeContext'
 
 type DockStatus = 'available' | 'occupied' | 'out-of-service' | 'deiced'
 type DockLocation = 'southeast' | 'southwest'
@@ -38,40 +39,164 @@ interface DockUpdateMessage {
 
 type WebSocketMessage = FullSyncMessage | DockUpdateMessage;
 
-// Add these theme constants at the top of the file
-const THEME = {
-  primary: {
-    gradient: 'from-blue-600 to-indigo-600',
-    hover: 'from-blue-700 to-indigo-700',
+// First, let's type the theme properly
+type ThemeType = 'light' | 'dark';
+
+interface ThemeConfig {
+  light: {
+    background: string;
+    header: string;
+    surface: {
+      primary: string;
+      secondary: string;
+    };
+    text: {
+      primary: string;
+      secondary: string;
+    };
+    status: {
+      [key in DockStatus]: {
+        bg: string;
+        text: string;
+        border: string;
+      };
+    };
+    input: {
+      bg: string;
+      border: string;
+      text: string;
+    };
+    monitor: {
+      bg: string;
+      text: string;
+      subtext: string;
+      button: string;
+    };
+  };
+  dark: {
+    // Same structure as light
+    background: string;
+    header: string;
+    surface: {
+      primary: string;
+      secondary: string;
+    };
+    text: {
+      primary: string;
+      secondary: string;
+    };
+    status: {
+      [key in DockStatus]: {
+        bg: string;
+        text: string;
+        border: string;
+      };
+    };
+    input: {
+      bg: string;
+      border: string;
+      text: string;
+    };
+    monitor: {
+      bg: string;
+      text: string;
+      subtext: string;
+      button: string;
+    };
+  };
+}
+
+// Type the THEME constant
+const THEME: ThemeConfig = {
+  light: {
+    background: 'bg-gray-100',  // Darker background
+    header: 'bg-white border-gray-200',
+    surface: {
+      primary: 'bg-white border border-gray-300',  // Darker border
+      secondary: 'bg-gray-50 border border-gray-200',
+    },
+    text: {
+      primary: 'text-gray-900',  // Already dark
+      secondary: 'text-gray-600',  // Darker secondary text
+    },
+    status: {
+      available: {
+        bg: 'bg-emerald-100',  // Slightly darker green
+        text: 'text-emerald-800',  // Darker text
+        border: 'border-emerald-200',
+      },
+      occupied: {
+        bg: 'bg-amber-100',
+        text: 'text-amber-800',
+        border: 'border-amber-200',
+      },
+      'out-of-service': {
+        bg: 'bg-red-100',
+        text: 'text-red-800',
+        border: 'border-red-200',
+      },
+      deiced: {
+        bg: 'bg-blue-100',
+        text: 'text-blue-800',
+        border: 'border-blue-200',
+      },
+    },
+    input: {
+      bg: 'bg-gray-50',  // Slightly darker input background
+      border: 'border-gray-300',  // Darker border
+      text: 'text-gray-900',
+    },
+    monitor: {
+      bg: 'bg-emerald-100',
+      text: 'text-emerald-800',
+      subtext: 'text-emerald-700',
+      button: 'bg-emerald-200 hover:bg-emerald-300 text-emerald-800',
+    },
   },
-  card: {
-    base: 'bg-white/5 backdrop-blur-lg border border-white/10',
-    hover: 'hover:border-blue-500/50 hover:bg-white/10',
-  },
-  status: {
-    available: {
+  dark: {
+    // Dark theme remains unchanged
+    background: 'bg-gray-900',
+    header: 'bg-gray-800 border-gray-700',
+    surface: {
+      primary: 'bg-gray-800 border border-gray-700',
+      secondary: 'bg-gray-800/50 border border-gray-700',
+    },
+    text: {
+      primary: 'text-white',
+      secondary: 'text-gray-400',
+    },
+    status: {
+      available: {
+        bg: 'bg-emerald-500/10',
+        text: 'text-emerald-400',
+        border: 'border-emerald-500/20',
+      },
+      occupied: {
+        bg: 'bg-amber-500/10',
+        text: 'text-amber-400',
+        border: 'border-amber-500/20',
+      },
+      'out-of-service': {
+        bg: 'bg-red-500/10',
+        text: 'text-red-400',
+        border: 'border-red-500/20',
+      },
+      deiced: {
+        bg: 'bg-blue-500/10',
+        text: 'text-blue-400',
+        border: 'border-blue-500/20',
+      },
+    },
+    input: {
+      bg: 'bg-gray-700',
+      border: 'border-gray-600',
+      text: 'text-white',
+    },
+    monitor: {
       bg: 'bg-emerald-500/10',
       text: 'text-emerald-400',
-      border: 'border-emerald-500/20',
-      icon: 'text-emerald-500',
-    },
-    occupied: {
-      bg: 'bg-amber-500/10',
-      text: 'text-amber-400',
-      border: 'border-amber-500/20',
-      icon: 'text-amber-500',
-    },
-    'out-of-service': {
-      bg: 'bg-rose-500/10',
-      text: 'text-rose-400',
-      border: 'border-rose-500/20',
-      icon: 'text-rose-500',
-    },
-    deiced: {
-      bg: 'bg-sky-500/10',
-      text: 'text-sky-400',
-      border: 'border-sky-500/20',
-      icon: 'text-sky-500',
+      subtext: 'text-emerald-300/70',
+      button: 'bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-400',
     },
   },
 };
@@ -82,7 +207,7 @@ interface MonitoredDock extends Dock {
 }
 
 export default function DockTracker() {
-  // Add the monitor mode states here with the other state declarations
+  const { theme, toggleTheme } = useTheme()
   const [docks, setDocks] = useState<Dock[]>([])
   const [activeTab, setActiveTab] = useState<DockLocation>('southwest')
   const [statusFilter, setStatusFilter] = useState<DockStatus | null>(null)
@@ -90,7 +215,6 @@ export default function DockTracker() {
   const [error, setError] = useState<string | null>(null)
   const [isMonitorMode, setIsMonitorMode] = useState(false)
   const [monitoredDockIds, setMonitoredDockIds] = useState<Set<number>>(new Set())
-  // Add this line for tracking recently changed docks
   const [recentlyChanged, setRecentlyChanged] = useState<Set<number>>(new Set())
   const wsRef = useRef<WebSocket | null>(null)
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null)
@@ -144,7 +268,7 @@ export default function DockTracker() {
             // Update timestamp
             lastSyncTimestampRef.current = data.timestamp;
             
-            // Update docks and trigger animation atomically
+            // Update docks and trigger animation
             const updatedDock = { ...data.data, name: getDockName(data.data) };
             
             setDocks(prevDocks => 
@@ -153,8 +277,17 @@ export default function DockTracker() {
                 )
             );
             
-            // Set animation after confirming the update
-            setRecentlyChanged(prev => new Set(prev).add(data.data.id));
+            // Set animation and play a subtle sound if available
+            setRecentlyChanged(prev => new Set(prev).add(updatedDock.id));
+            
+            // Optional: Play a subtle sound effect
+            try {
+              const audio = new Audio('/status-change.mp3'); // You'll need to add this sound file
+              audio.volume = 0.2;
+              audio.play();
+            } catch (error) {
+              console.log('Sound not available');
+            }
             
         } else if (data.type === 'full_sync') {
             if (data.timestamp > lastSyncTimestampRef.current) {
@@ -343,10 +476,10 @@ export default function DockTracker() {
   }, [docks, activeTab])
 
   const getStatusIcon = (status: DockStatus, dockId: number) => {
-    const baseClasses = "transition-all duration-300 transform hover:scale-110"
+    const baseClasses = "transition-all duration-300 transform"
     const isRecent = recentlyChanged.has(dockId)
-    const animationClass = isRecent ? "animate-pulse" : ""
-    const statusTheme = THEME.status[status]
+    const animationClass = isRecent ? "animate-bounce" : "hover:scale-110"
+    const statusTheme = THEME[theme].status[status]
 
     if (isRecent) {
       setTimeout(() => {
@@ -355,47 +488,67 @@ export default function DockTracker() {
           next.delete(dockId)
           return next
         })
-      }, 1000)
+      }, 2000)
     }
 
-    switch (status) {
-      case 'available':
-        return (
-          <div className="relative group">
-            <PlaneLanding className={`${baseClasses} ${animationClass} h-8 w-8 ${statusTheme.icon}`} />
-            <span className="absolute hidden group-hover:block -top-8 left-1/2 -translate-x-1/2 bg-gray-900 text-white text-xs px-2 py-1 rounded shadow-lg">
-              Available
-            </span>
+    const iconClasses = `${baseClasses} ${animationClass} h-8 w-8 ${statusTheme.text}`
+
+    const tooltipClasses = `
+      absolute invisible group-hover:visible
+      -top-12 left-1/2 -translate-x-1/2
+      px-3 py-1.5 rounded-md
+      bg-gray-900 text-white text-xs
+      whitespace-nowrap
+      shadow-lg
+      z-50
+      opacity-0 group-hover:opacity-100
+      transition-opacity duration-200
+    `
+
+    const icons = {
+      available: (
+        <div className="relative group cursor-help">
+          <PlaneLanding className={iconClasses} />
+          <div className={tooltipClasses}>
+            Available for Docking
+            <div className="absolute -bottom-1 left-1/2 -translate-x-1/2 
+              border-t-4 border-x-4 border-transparent border-t-gray-900" />
           </div>
-        )
-      case 'occupied':
-        return (
-          <div className="relative group">
-            <PlaneIcon className={`${baseClasses} ${animationClass} h-8 w-8 ${statusTheme.icon}`} />
-            <span className="absolute hidden group-hover:block -top-8 left-1/2 -translate-x-1/2 bg-gray-900 text-white text-xs px-2 py-1 rounded shadow-lg">
-              Occupied
-            </span>
+        </div>
+      ),
+      occupied: (
+        <div className="relative group cursor-help">
+          <PlaneIcon className={iconClasses} />
+          <div className={tooltipClasses}>
+            Currently Occupied
+            <div className="absolute -bottom-1 left-1/2 -translate-x-1/2 
+              border-t-4 border-x-4 border-transparent border-t-gray-900" />
           </div>
-        )
-      case 'out-of-service':
-        return (
-          <div className="relative group">
-            <AlertTriangle className={`${baseClasses} ${animationClass} h-8 w-8 ${statusTheme.icon}`} />
-            <span className="absolute hidden group-hover:block -top-8 left-1/2 -translate-x-1/2 bg-gray-900 text-white text-xs px-2 py-1 rounded shadow-lg">
-              Out of Service
-            </span>
+        </div>
+      ),
+      'out-of-service': (
+        <div className="relative group cursor-help">
+          <AlertTriangle className={iconClasses} />
+          <div className={tooltipClasses}>
+            Out of Service
+            <div className="absolute -bottom-1 left-1/2 -translate-x-1/2 
+              border-t-4 border-x-4 border-transparent border-t-gray-900" />
           </div>
-        )
-      case 'deiced':
-        return (
-          <div className="relative group">
-            <Snowflake className={`${baseClasses} ${animationClass} h-8 w-8 ${statusTheme.icon}`} />
-            <span className="absolute hidden group-hover:block -top-8 left-1/2 -translate-x-1/2 bg-gray-900 text-white text-xs px-2 py-1 rounded shadow-lg">
-              Deiced
-            </span>
+        </div>
+      ),
+      deiced: (
+        <div className="relative group cursor-help">
+          <Snowflake className={iconClasses} />
+          <div className={tooltipClasses}>
+            Deiced and Ready
+            <div className="absolute -bottom-1 left-1/2 -translate-x-1/2 
+              border-t-4 border-x-4 border-transparent border-t-gray-900" />
           </div>
-        )
+        </div>
+      ),
     }
+
+    return icons[status]
   }
 
   const handleStatusClick = (status: DockStatus) => {
@@ -456,24 +609,31 @@ export default function DockTracker() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900">
-      {/* Professional Header */}
-      <header className="bg-black/20 backdrop-blur-lg border-b border-white/10 sticky top-0 z-50">
+    <div className={`min-h-screen ${THEME[theme].background}`} role="application">
+      {/* Accessible Header */}
+      <header 
+        className={`${THEME[theme].header} backdrop-blur-lg border-b sticky top-0 z-50`}
+        role="banner"
+      >
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
           <div className="flex justify-between items-center">
             <div className="flex items-center space-x-3">
-              <div className="p-2 bg-gradient-to-r from-blue-500 to-indigo-500 rounded-lg">
+              <div 
+                className="p-2 bg-gradient-to-r from-blue-500 to-indigo-500 rounded-lg"
+                aria-hidden="true" // Hide decorative icon from screen readers
+              >
                 <PlaneLanding className="h-6 w-6 text-white" />
               </div>
-              <h1 className="text-2xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-indigo-400">
+              <h1 className={`text-2xl font-bold ${THEME[theme].text.primary}`}>
                 IDS Dock Tracker
               </h1>
             </div>
-            <div className="flex items-center space-x-4">
+            <div className="flex items-center space-x-4" role="toolbar" aria-label="Main controls">
               {isMonitorMode ? (
                 <button
                   onClick={() => setMonitoredDockIds(new Set())}
                   className="px-4 py-2 bg-green-500/20 text-green-400 rounded-lg hover:bg-green-500/30 transition-all duration-200"
+                  aria-label="Clear all monitored docks"
                 >
                   Clear All
                 </button>
@@ -481,6 +641,7 @@ export default function DockTracker() {
                 <button
                   onClick={() => setMonitoredDockIds(new Set(docks.filter(d => d.location === activeTab).map(d => d.id)))}
                   className="px-4 py-2 bg-green-500/20 text-green-400 rounded-lg hover:bg-green-500/30 transition-all duration-200"
+                  aria-label="Monitor all docks in current terminal"
                 >
                   Monitor All
                 </button>
@@ -491,12 +652,23 @@ export default function DockTracker() {
                   ${isMonitorMode 
                     ? 'bg-green-600 hover:bg-green-700 text-white shadow-green-500/20' 
                     : 'bg-gray-600 hover:bg-gray-700 text-white shadow-gray-500/20'}`}
+                aria-pressed={isMonitorMode}
+                aria-label={`${isMonitorMode ? 'Exit' : 'Enter'} monitor mode`}
               >
                 {isMonitorMode ? 'Exit Monitor Mode' : 'Monitor Mode'}
               </button>
               <button
+                onClick={toggleTheme}
+                className={`p-2 rounded-lg transition-all duration-200`}
+                aria-label={`Switch to ${theme === 'dark' ? 'light' : 'dark'} mode`}
+                aria-pressed={theme === 'dark'}
+              >
+                <span aria-hidden="true">{theme === 'dark' ? '🌙' : '☀️'}</span>
+              </button>
+              <button
                 onClick={logout}
                 className="px-4 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white rounded-lg transition-all duration-200 font-medium shadow-lg shadow-blue-500/20"
+                aria-label="Logout from application"
               >
                 Logout
               </button>
@@ -505,115 +677,145 @@ export default function DockTracker() {
         </div>
       </header>
 
-      {/* Main Content */}
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Location Selector */}
-        <div className={`${THEME.card.base} rounded-xl p-6 mb-8`}>
-          <h2 className="text-xl font-semibold text-white mb-4">Select Terminal</h2>
+      {/* Main Content with ARIA landmarks */}
+      <main 
+        className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8"
+        role="main"
+      >
+        {/* Location Selector with improved accessibility */}
+        <div 
+          className={`${THEME[theme].surface.primary} rounded-lg p-4 mb-8`}
+          role="region"
+          aria-label="Terminal selection"
+        >
+          <h2 className={`text-xl font-semibold ${THEME[theme].text.primary} mb-4`}>
+            Select Terminal
+          </h2>
           <select 
             value={activeTab} 
             onChange={(e) => setActiveTab(e.target.value as DockLocation)}
-            className="w-full p-3 bg-gray-800 border border-gray-600 rounded-lg text-white 
-              focus:border-blue-500 focus:ring-blue-500 transition-all duration-200
-              hover:border-blue-400"
+            className={`w-full p-2 rounded
+              ${THEME[theme].input.bg} 
+              ${THEME[theme].input.border}
+              ${THEME[theme].input.text}
+              border transition-colors focus:ring-2 focus:ring-blue-500`}
+            aria-label="Select terminal location"
           >
-            <option value="southwest" className="bg-gray-800 text-white hover:bg-gray-700">
-              Southwest Terminal
-            </option>
-            <option value="southeast" className="bg-gray-800 text-white hover:bg-gray-700">
-              Southeast Terminal
-            </option>
+            <option value="southwest">Southwest Terminal</option>
+            <option value="southeast">Southeast Terminal</option>
           </select>
         </div>
 
-        {/* Status Overview */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+        {/* Status Overview with improved accessibility */}
+        <div 
+          className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8"
+          role="region"
+          aria-label="Dock status overview"
+        >
           {Object.entries(statusCounts).map(([status, count]) => {
-            const statusTheme = THEME.status[status as DockStatus];
+            const statusTheme = THEME[theme].status[status as DockStatus];
             return (
-              <div 
+              <button 
                 key={status} 
-                className={`${THEME.card.base} ${THEME.card.hover} ${statusTheme.bg} rounded-xl p-6 cursor-pointer transition-all duration-300
-                  ${statusFilter === status ? 'ring-2 ring-blue-500 shadow-lg scale-105' : ''}`}
+                className={`${THEME[theme].surface.primary} ${statusTheme.bg} 
+                  rounded-lg p-4 cursor-pointer transition-all duration-200
+                  ${statusFilter === status ? 'ring-2 ring-blue-500' : ''}`}
                 onClick={() => handleStatusClick(status as DockStatus)}
+                aria-pressed={statusFilter === status}
+                aria-label={`Filter by ${status.replace('-', ' ')} status: ${count} docks`}
               >
                 <div className="flex items-center justify-between">
                   <div>
                     <p className={`text-sm font-medium uppercase tracking-wider ${statusTheme.text}`}>
-                      {status}
+                      {status.replace('-', ' ')}
                     </p>
-                    <p className="text-3xl font-bold text-white mt-1">{count}</p>
+                    <p className={`text-3xl font-bold ${THEME[theme].text.primary}`}>
+                      {count}
+                    </p>
                   </div>
-                  {getStatusIcon(status as DockStatus, -1)}
+                  <div aria-hidden="true">
+                    {getStatusIcon(status as DockStatus, -1)}
+                  </div>
                 </div>
-              </div>
+              </button>
             );
           })}
         </div>
 
-        {/* Dock Status Grid */}
-        <div className={`${THEME.card.base} rounded-xl p-6`}>
-          <h2 className="text-xl font-semibold text-white mb-6">Dock Status</h2>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-6">
+        {/* Dock Status Grid with improved accessibility */}
+        <div 
+          className={`${THEME[theme].surface.primary} rounded-lg p-6`}
+          role="region"
+          aria-label="Dock status management"
+        >
+          <h2 className={`text-xl font-semibold ${THEME[theme].text.primary} mb-6`}>
+            Dock Status
+          </h2>
+          <div 
+            className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-4"
+            role="list"
+          >
             {filteredDocks.map(dock => {
-              const statusTheme = THEME.status[dock.status];
+              const statusTheme = THEME[theme].status[dock.status];
               return (
-                <div 
-                  key={dock.id} 
-                  className="relative overflow-hidden rounded-xl bg-gradient-to-br from-gray-800/50 to-gray-900/50 backdrop-blur-sm border border-gray-700/50"
+                <div
+                  key={dock.id}
+                  className={`${THEME[theme].surface.secondary} rounded-lg overflow-hidden`}
+                  role="listitem"
                 >
-                  {/* Status Indicator Strip */}
-                  <div className={`absolute top-0 left-0 w-full h-1 ${statusTheme.bg}`} />
+                  <div className={`${statusTheme.bg} p-4 flex flex-col items-center space-y-2`}>
+                    {/* Status Icon */}
+                    <div className="transform-gpu">
+                      {getStatusIcon(dock.status, dock.id)}
+                    </div>
+                    {/* Dock Name and Monitor Button */}
+                    <div className="flex items-center justify-between w-full">
+                      <span className={`font-medium ${statusTheme.text} text-lg`}>
+                        {dock.name}
+                      </span>
+                      {!isMonitorMode && (
+                        <button
+                          onClick={() => toggleDockMonitoring(dock.id)}
+                          className={`p-1.5 rounded-full transition-colors
+                            ${monitoredDockIds.has(dock.id) 
+                              ? THEME[theme].monitor.button
+                              : 'hover:bg-black/5 dark:hover:bg-white/5'}`}
+                          aria-label={`${monitoredDockIds.has(dock.id) ? 'Stop monitoring' : 'Start monitoring'} dock ${dock.name}`}
+                          aria-pressed={monitoredDockIds.has(dock.id)}
+                        >
+                          <Eye 
+                            className={`h-4 w-4 ${monitoredDockIds.has(dock.id) 
+                              ? THEME[theme].monitor.text 
+                              : THEME[theme].text.secondary}`} 
+                            aria-hidden="true"
+                          />
+                        </button>
+                      )}
+                    </div>
+                  </div>
                   
-                  {/* Card Content */}
-                  <div className="p-6">
-                    {/* Header */}
-                    <div className="flex justify-between items-start mb-6">
-                      <div>
-                        <h3 className="text-2xl font-bold text-white">{dock.name}</h3>
-                        <span className={`text-sm font-medium ${statusTheme.text} mt-1 block`}>
-                          {dock.status.charAt(0).toUpperCase() + dock.status.slice(1)}
-                        </span>
-                      </div>
-                      <div className="flex items-center space-x-2">
-                        {!isMonitorMode && (
-                          <button
-                            onClick={() => toggleDockMonitoring(dock.id)}
-                            className={`p-2 rounded-lg transition-all duration-200
-                              ${monitoredDockIds.has(dock.id)
-                                ? 'bg-green-500/20 text-green-400 hover:bg-green-500/30'
-                                : 'bg-gray-700 text-gray-400 hover:bg-gray-600'}`}
-                          >
-                            <Eye className="h-5 w-5" />
-                          </button>
-                        )}
-                        <div className={`p-2 rounded-lg ${statusTheme.bg} ${statusTheme.border}`}>
-                          {getStatusIcon(dock.status, dock.id)}
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Status Selector */}
-                    <div className="relative">
-                      <select 
-                        value={dock.status}
-                        onChange={(e) => updateDockStatus(dock.id, e.target.value as DockStatus)}
-                        className="w-full p-3 bg-gray-800 border border-gray-600 rounded-lg text-white 
-                          focus:border-blue-500 focus:ring-blue-500 transition-all duration-200
-                          hover:border-blue-400 appearance-none cursor-pointer"
-                      >
-                        <option value="available" className="bg-gray-800 text-white">Available</option>
-                        <option value="occupied" className="bg-gray-800 text-white">Occupied</option>
-                        <option value="out-of-service" className="bg-gray-800 text-white">Out of Service</option>
-                        <option value="deiced" className="bg-gray-800 text-white">Deiced</option>
-                      </select>
-                      {/* Custom dropdown arrow */}
-                      <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none">
-                        <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                        </svg>
-                      </div>
-                    </div>
+                  <div className="p-4">
+                    <label 
+                      htmlFor={`dock-status-${dock.id}`}
+                      className="sr-only"
+                    >
+                      Change status for dock {dock.name}
+                    </label>
+                    <select 
+                      id={`dock-status-${dock.id}`}
+                      value={dock.status}
+                      onChange={(e) => updateDockStatus(dock.id, e.target.value as DockStatus)}
+                      className={`w-full p-2 rounded
+                        ${THEME[theme].input.bg} 
+                        ${THEME[theme].input.border}
+                        ${THEME[theme].input.text}
+                        border transition-colors focus:ring-2 focus:ring-blue-500`}
+                    >
+                      <option value="available">Available</option>
+                      <option value="occupied">Occupied</option>
+                      <option value="out-of-service">Out of Service</option>
+                      <option value="deiced">Deiced</option>
+                    </select>
                   </div>
                 </div>
               );
@@ -621,21 +823,39 @@ export default function DockTracker() {
           </div>
         </div>
       </main>
+
+      {/* Monitor Mode Banner with improved accessibility */}
       {isMonitorMode && (
-        <div className="mb-8 p-4 bg-green-500/10 border border-green-500/20 rounded-xl">
-          <div className="flex items-center justify-between">
-            <div>
-              <h3 className="text-lg font-semibold text-green-400">Monitoring Mode Active</h3>
-              <p className="text-sm text-green-300/70">
-                Showing {monitoredDockIds.size} monitored dock{monitoredDockIds.size !== 1 ? 's' : ''}
-              </p>
+        <div 
+          className="fixed bottom-4 left-4 right-4 z-50"
+          role="status"
+          aria-live="polite"
+        >
+          <div className={`max-w-xl mx-auto ${THEME[theme].surface.primary} 
+            rounded-lg shadow-lg p-4 border border-emerald-200 dark:border-emerald-500/20`}
+          >
+            <div className="flex items-center justify-between">
+              <div className="flex items-center space-x-3">
+                <div className={`p-2 rounded-full ${THEME[theme].monitor.bg}`} aria-hidden="true">
+                  <Eye className={`h-5 w-5 ${THEME[theme].monitor.text}`} />
+                </div>
+                <div>
+                  <h3 className={`font-medium ${THEME[theme].monitor.text}`}>
+                    Monitor Mode Active
+                  </h3>
+                  <p className={THEME[theme].monitor.subtext}>
+                    Monitoring {monitoredDockIds.size} dock{monitoredDockIds.size !== 1 ? 's' : ''}
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setIsMonitorMode(false)}
+                className={`px-4 py-2 rounded-lg ${THEME[theme].monitor.button}`}
+                aria-label="Exit monitor mode"
+              >
+                Exit Monitor Mode
+              </button>
             </div>
-            <button
-              onClick={() => setIsMonitorMode(false)}
-              className="px-4 py-2 bg-green-500/20 text-green-400 rounded-lg hover:bg-green-500/30 transition-all duration-200"
-            >
-              Exit Monitoring
-            </button>
           </div>
         </div>
       )}
