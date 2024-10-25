@@ -96,7 +96,6 @@ func (h *Handler) AuthMiddleware(next http.Handler) http.Handler {
 			http.Error(w, "Unauthorized", http.StatusUnauthorized)
 			return
 		}
-		token := parts[1]
 
 		// For now, just check if token exists
 		// In production, validate the JWT token
@@ -124,17 +123,21 @@ func (h *Handler) UpdateDockStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var update struct {
+	var payload struct {
 		Status string `json:"status"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&update); err != nil {
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
 		http.Error(w, "Invalid request body", http.StatusBadRequest)
 		return
 	}
 
-	dock, err := h.db.UpdateDockStatus(id, models.DockStatus(update.Status))
+	dock, err := h.db.UpdateDockStatus(id, models.DockStatus(payload.Status))
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		if strings.Contains(err.Error(), "no dock found") {
+			http.Error(w, err.Error(), http.StatusNotFound)
+		} else {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		}
 		return
 	}
 
