@@ -25,10 +25,23 @@ func NewHandler(db *database.DB, hub *ws.Hub) *Handler {
 }
 
 func (h *Handler) HandleToken(w http.ResponseWriter, r *http.Request) {
-	// Set CORS headers
-	w.Header().Set("Access-Control-Allow-Origin", "*")
+	// Get the origin from the request
+	origin := r.Header.Get("Origin")
+
+	// Allow both development and production origins
+	allowedOrigins := map[string]bool{
+		"http://localhost:3000": true,
+		"https://idsdock.com":   true,
+	}
+
+	// If the origin is allowed, set it in the response header
+	if allowedOrigins[origin] {
+		w.Header().Set("Access-Control-Allow-Origin", origin)
+	}
+
 	w.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS")
 	w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+	w.Header().Set("Access-Control-Allow-Credentials", "true")
 
 	// Handle preflight request
 	if r.Method == "OPTIONS" {
@@ -176,16 +189,49 @@ func (h *Handler) HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 	go client.WritePump()
 }
 
+func CORSMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Get the origin from the request
+		origin := r.Header.Get("Origin")
+
+		// Allow both development and production origins
+		allowedOrigins := map[string]bool{
+			"http://localhost:3000": true,
+			"https://idsdock.com":   true,
+		}
+
+		// If the origin is allowed, set it in the response header
+		if allowedOrigins[origin] {
+			w.Header().Set("Access-Control-Allow-Origin", origin)
+		}
+
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+		w.Header().Set("Access-Control-Allow-Credentials", "true")
+
+		// Handle preflight requests
+		if r.Method == "OPTIONS" {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+
+		next.ServeHTTP(w, r)
+	})
+}
+
 func (h *Handler) RegisterRoutes(router *mux.Router) {
+	// Apply CORS middleware to all routes
+	router.Use(CORSMiddleware)
+
 	// Auth routes
-	router.HandleFunc("/token", h.HandleToken).Methods("POST")
+	router.HandleFunc("/api/token", h.HandleToken).Methods("POST", "OPTIONS")
 	router.HandleFunc("/ws", h.HandleWebSocket)
 
 	// Protected routes
-	api := router.PathPrefix("/").Subrouter()
+	api := router.PathPrefix("/api").Subrouter()
 	api.Use(h.AuthMiddleware)
 
-	api.HandleFunc("/docks", h.GetAllDocks).Methods("GET")
-	api.HandleFunc("/docks/{id}/status", h.UpdateDockStatus).Methods("PUT")
+	api.HandleFunc("/docks", h.GetAllDocks).Methods("GET", "OPTIONS")
+	api.HandleFunc("/docks/{id}/status", h.UpdateDockStatus).Methods("PUT", "OPTIONS")
 	// Remove duplicate or conflicting routes
 }

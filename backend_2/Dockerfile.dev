@@ -1,23 +1,25 @@
-FROM golang:1.20-alpine
+# Update to Go 1.21
+FROM golang:1.21-alpine
 
 WORKDIR /app
 
-# Install Air for hot reloading
-RUN go install github.com/cosmtrek/air@latest
-
-# Install build dependencies
+# Add necessary build tools
 RUN apk add --no-cache gcc musl-dev
 
-# Copy go mod files
-COPY go.mod go.sum ./
+# Install air
+RUN go install github.com/cosmtrek/air@v1.49.0
 
-# Download dependencies
-RUN go mod download
+# Create air.toml first
+RUN echo 'root = "."' > .air.toml && \
+    echo 'tmp_dir = "tmp"' >> .air.toml && \
+    echo '[build]' >> .air.toml && \
+    echo 'cmd = "go build -o ./tmp/main ./cmd/server"' >> .air.toml && \
+    echo 'bin = "./tmp/main"' >> .air.toml && \
+    echo 'include_ext = ["go"]' >> .air.toml && \
+    echo 'exclude_dir = ["tmp"]' >> .air.toml
 
-# Copy the source code
-COPY . .
+# Create tmp directory
+RUN mkdir -p tmp
 
-EXPOSE 8080
-
-# Run with Air
+# Command to run air
 CMD ["air"]

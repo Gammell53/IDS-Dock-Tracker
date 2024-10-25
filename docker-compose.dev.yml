@@ -11,6 +11,12 @@ services:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
 
   backend:
     build:
@@ -25,25 +31,16 @@ services:
       - DB_PASSWORD=postgres
       - DB_NAME=docktracker
       - PORT=8080
+      - DATABASE_URL=postgres://postgres:postgres@postgres:5432/docktracker?sslmode=disable
     volumes:
-      - ./backend_2:/app
+      - ./backend_2/cmd:/app/cmd
+      - ./backend_2/internal:/app/internal
+      - ./backend_2/go.mod:/app/go.mod
+      - ./backend_2/go.sum:/app/go.sum
     depends_on:
-      - postgres
-
-  frontend:
-    build:
-      context: ./frontend
-      dockerfile: Dockerfile.dev
-    ports:
-      - "3000:3000"
-    environment:
-      - NEXT_PUBLIC_API_URL=http://localhost:8080/api
-      - NEXT_PUBLIC_WS_URL=ws://localhost:8080/ws
-    volumes:
-      - ./frontend:/app
-      - /app/node_modules
-    depends_on:
-      - backend
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
 
 volumes:
   postgres_data:
