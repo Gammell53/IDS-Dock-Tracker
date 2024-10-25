@@ -30,7 +30,7 @@ type Client struct {
 func NewHub(db *database.DB) *Hub { // Use the correct package for DB
 	return &Hub{
 		clients:    make(map[string]*Client),
-		Broadcast:  make(chan []byte), // Capital B
+		Broadcast:  make(chan []byte, 256), // Add buffer to channel
 		Register:   make(chan *Client),
 		Unregister: make(chan *Client),
 		db:         db,
@@ -64,32 +64,42 @@ func (h *Hub) Run() {
 			log.Printf("Client %s disconnected. Total clients: %d", client.ID, len(h.clients))
 
 		case message := <-h.Broadcast:
-			h.mu.RLock()
-			log.Printf("Broadcasting message to %d clients", len(h.clients))
-			for id, client := range h.clients {
-				err := client.Conn.WriteMessage(websocket.TextMessage, message)
-				if err != nil {
-					log.Printf("Error sending message to client %s: %v", id, err)
-					client.Conn.Close()
-					h.mu.RUnlock()
-					h.mu.Lock()
-					delete(h.clients, id)
-					h.mu.Unlock()
-					h.mu.RLock()
-				} else {
-					log.Printf("Message sent successfully to client %s", id)
-				}
-			}
-			h.mu.RUnlock()
+			h.broadcastMessage(message)
 		}
 	}
 }
 
+func (h *Hub) broadcastMessage(message []byte) {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+
+	log.Printf("Broadcasting message to %d clients: %s", len(h.clients), string(message))
+
+	for id, client := range h.clients {
+		go func(clientID string, c *Client, msg []byte) {
+			err := c.Conn.WriteMessage(websocket.TextMessage, msg)
+			if err != nil {
+				log.Printf("Error sending message to client %s: %v", clientID, err)
+				h.Unregister <- c
+			} else {
+				log.Printf("Successfully sent message to client %s", clientID)
+			}
+		}(id, client, message)
+	}
+}
+
 func (h *Hub) BroadcastUpdate(dock models.Dock) {
+	// First update the database
+	updatedDock, err := h.db.GetDockByID(dock.ID)
+	if err != nil {
+		log.Printf("Error getting updated dock: %v", err)
+		return
+	}
+
 	update := models.DockUpdate{
 		Type:      "dock_updated",
-		Data:      dock,
-		Timestamp: time.Now().Unix(), // Add timestamp
+		Data:      *updatedDock,
+		Timestamp: time.Now().Unix(),
 	}
 
 	message, err := json.Marshal(update)
@@ -100,6 +110,14 @@ func (h *Hub) BroadcastUpdate(dock models.Dock) {
 
 	log.Printf("Broadcasting dock update: %s", string(message))
 	h.Broadcast <- message
+
+	// Send a full sync after update to ensure consistency
+	docks, err := h.db.GetAllDocks()
+	if err != nil {
+		log.Printf("Error fetching docks for full sync: %v", err)
+		return
+	}
+	h.BroadcastFullSync(docks)
 }
 
 func (h *Hub) BroadcastFullSync(docks []models.Dock) {
@@ -139,6 +157,24 @@ func (c *Client) ReadPump() {
 			}
 			break
 		}
+
+		// Handle incoming messages
+		var msg map[string]interface{}
+		if err := json.Unmarshal(message, &msg); err != nil {
+			log.Printf("Error unmarshaling message: %v", err)
+			continue
+		}
+
+		// If client requests full sync, send it
+		if msgType, ok := msg["type"].(string); ok && msgType == "request_full_sync" {
+			docks, err := c.Hub.db.GetAllDocks()
+			if err != nil {
+				log.Printf("Error fetching docks for full sync: %v", err)
+				continue
+			}
+			c.Hub.BroadcastFullSync(docks)
+		}
+
 		log.Printf("Received message from client %s: %s", c.ID, string(message))
 	}
 }
