@@ -113,11 +113,11 @@ func (db *DB) InitializeDB() error {
 		{"southwest", 9, "available", "H96"},
 		{"southwest", 10, "available", "H98"},
 		{"southwest", 11, "available", "H99"},
-		
+
 		// Southeast docks
 		{"southeast", 1, "available", "SE-1"},
 		{"southeast", 2, "available", "SE-2"},
-		{"southeast", 3, "available", "SE-3"}
+		{"southeast", 3, "available", "SE-3"}, // Added comma here
 	}
 
 	for _, dock := range defaultDocks {
