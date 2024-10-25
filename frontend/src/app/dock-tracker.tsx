@@ -23,6 +23,21 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL || 'https://idsdock.com/api';
 const WS_URL = process.env.NEXT_PUBLIC_WS_URL || 'wss://idsdock.com/ws';
 const STALE_DATA_THRESHOLD = 5 * 60 * 1000; // 5 minutes in milliseconds
 
+// Define WebSocket message interfaces
+interface FullSyncMessage {
+  type: 'full_sync';
+  docks: Dock[];
+  timestamp: number;
+}
+
+interface DockUpdateMessage {
+  type: 'dock_updated';
+  data: Dock;
+  timestamp: number;
+}
+
+type WebSocketMessage = FullSyncMessage | DockUpdateMessage;
+
 export default function DockTracker() {
   const [docks, setDocks] = useState<Dock[]>([])
   const [activeTab, setActiveTab] = useState<DockLocation>('southwest')
@@ -204,43 +219,36 @@ export default function DockTracker() {
     };
   }, [setupWebSocket, checkDataFreshness, fetchDocks]);
 
-  const updateDockStatus = async (id: number, status: DockStatus) => {
+  const updateDockStatus = async (dockId: number, newStatus: string) => {
+    // Optimistically update local state
+    setDocks((prevDocks) =>
+      prevDocks.map((dock) =>
+        dock.id === dockId ? { ...dock, status: newStatus } : dock
+      )
+    );
+
     try {
-        const token = localStorage.getItem('token');
-        
-        // Optimistic update with timestamp check
-        const updateTimestamp = Date.now();
-        setDocks(prevDocks => 
-            prevDocks.map(dock => 
-                dock.id === id ? {...dock, status, _lastUpdate: updateTimestamp} : dock
-            )
-        );
+      const response = await fetch(`/api/docks/${dockId}/status`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ status: newStatus }),
+      });
 
-        const response = await fetch(`${API_URL}/docks/${id}`, {
-            method: 'PUT',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${token}`,
-            },
-            body: JSON.stringify({ status }),
-        });
-
-        if (!response.ok) {
-            throw new Error('Failed to update dock status');
-        }
-
-        // Request a full sync after update to ensure consistency
-        if (wsRef.current?.readyState === WebSocket.OPEN) {
-            wsRef.current.send(JSON.stringify({ type: "request_full_sync" }));
-        }
+      if (!response.ok) {
+        throw new Error('Failed to update dock status');
+      }
     } catch (error) {
-        console.error('Error updating dock status:', error);
-        // Revert optimistic update and request full sync
-        if (wsRef.current?.readyState === WebSocket.OPEN) {
-            wsRef.current.send(JSON.stringify({ type: "request_full_sync" }));
-        } else {
-            fetchDocks();
-        }
+      console.error('Error updating dock status:', error);
+      // Revert to previous state
+      setDocks((prevDocks) =>
+        prevDocks.map((dock) =>
+          dock.id === dockId ? { ...dock, status: /* previous status */ } : dock
+        )
+      );
+      // Notify user of the error
+      setError('Failed to update dock status. Please try again.');
     }
   };
 
@@ -385,3 +393,4 @@ function getDockName(dock: Dock) {
   }
   return `Dock ${dock.number}`
 }
+

@@ -22,6 +22,9 @@ const nextConfig = {
   eslint: {
     ignoreDuringBuilds: true,
   },
+  env: {
+    WEBSOCKET_URL: 'wss://idsdock.com/ws', // Use environment variable if needed
+  },
 }
 
 module.exports = nextConfig
