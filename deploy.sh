@@ -29,8 +29,18 @@ ssh root@$SERVER_IP "bash -s" << 'ENDSSH'
 
     # Navigate to project directory and deploy
     cd $DEPLOY_PATH
+    
+    # Stop and remove containers
     docker compose -f docker-compose.prod.yml --env-file .env.prod down
+
+    # Remove unused images
+    docker image prune -f
+
+    # Build and start new containers
     docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --build
+
+    # Clean up system (optional, uncomment if needed)
+    # docker system prune -f
 ENDSSH
 
 echo "Deployment completed!"
