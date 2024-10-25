@@ -15,6 +15,7 @@ interface Dock {
   status: DockStatus
 }
 
+// Update the southwest dock names array
 const southwestDockNames = ['H84', 'H86', 'H87', 'H89', 'H90', 'H92', 'H93', 'H95', 'H96', 'H98', 'H99']
 
 // Use an environment variable for the API URL
@@ -100,34 +101,42 @@ export default function DockTracker() {
 
   const setupWebSocket = useCallback(() => {
     if (wsRef.current?.readyState === WebSocket.OPEN) {
-      console.log('WebSocket connection already open');
-      return;
+        console.log('WebSocket connection already open');
+        return;
     }
 
     console.log('Setting up new WebSocket connection');
     const ws = new WebSocket(WS_URL);
 
     ws.onopen = () => {
-      console.log('WebSocket connection opened');
-      ws.send(JSON.stringify({ type: "request_full_sync" }));
+        console.log('WebSocket connection opened');
+        // Request immediate sync on connection
+        ws.send(JSON.stringify({ type: "request_full_sync" }));
+        // Clear any pending reconnect timeouts
+        if (reconnectTimeoutRef.current) {
+            clearTimeout(reconnectTimeoutRef.current);
+            reconnectTimeoutRef.current = null;
+        }
     };
 
     ws.onmessage = handleWebSocketMessage;
 
-    ws.onclose = () => {
-      console.log('WebSocket connection closed');
-      if (reconnectTimeoutRef.current) {
-        clearTimeout(reconnectTimeoutRef.current);
-      }
-      reconnectTimeoutRef.current = setTimeout(setupWebSocket, 5000);
+    ws.onclose = (event) => {
+        console.log('WebSocket connection closed:', event.code, event.reason);
+        // Attempt immediate reconnect
+        wsRef.current = null;
+        reconnectTimeoutRef.current = setTimeout(setupWebSocket, 1000);
+        // Also fetch latest data via HTTP
+        fetchDocks();
     };
 
     ws.onerror = (error) => {
-      console.error('WebSocket error:', error);
+        console.error('WebSocket error:', error);
+        ws.close();
     };
 
     wsRef.current = ws;
-  }, [handleWebSocketMessage]);
+}, [handleWebSocketMessage, fetchDocks]);
 
   useEffect(() => {
     fetchDocks()
@@ -369,6 +378,7 @@ export default function DockTracker() {
   )
 }
 
+// Update the getDockName function to handle the new names
 function getDockName(dock: Dock) {
   if (dock.location === 'southwest') {
     return southwestDockNames[dock.number - 1] || `Unknown SW Dock ${dock.number}`
