@@ -30,9 +30,9 @@ type Client struct {
 func NewHub(db *database.DB) *Hub { // Use the correct package for DB
 	return &Hub{
 		clients:    make(map[string]*Client),
-		Broadcast:  make(chan []byte, 256), // Add buffer to channel
-		Register:   make(chan *Client),
-		Unregister: make(chan *Client),
+		Broadcast:  make(chan []byte, 256),  // Increased buffer size
+		Register:   make(chan *Client, 256), // Added buffer
+		Unregister: make(chan *Client, 256), // Added buffer
 		db:         db,
 	}
 }
@@ -46,13 +46,8 @@ func (h *Hub) Run() {
 			h.mu.Unlock()
 			log.Printf("Client %s connected. Total clients: %d", client.ID, len(h.clients))
 
-			// Send full sync on new connection
-			docks, err := h.db.GetAllDocks()
-			if err != nil {
-				log.Printf("Error fetching docks for full sync: %v", err)
-				continue
-			}
-			h.BroadcastFullSync(docks)
+			// Send full sync to the new client only
+			go client.SendFullSync()
 
 		case client := <-h.Unregister:
 			h.mu.Lock()
@@ -71,11 +66,15 @@ func (h *Hub) Run() {
 
 func (h *Hub) broadcastMessage(message []byte) {
 	h.mu.RLock()
-	defer h.mu.RUnlock()
-
-	log.Printf("Broadcasting message to %d clients: %s", len(h.clients), string(message))
-
+	clients := make(map[string]*Client, len(h.clients))
 	for id, client := range h.clients {
+		clients[id] = client
+	}
+	h.mu.RUnlock()
+
+	log.Printf("Broadcasting message to %d clients", len(clients))
+
+	for id, client := range clients {
 		go func(clientID string, c *Client, msg []byte) {
 			err := c.Conn.WriteMessage(websocket.TextMessage, msg)
 			if err != nil {
@@ -89,10 +88,10 @@ func (h *Hub) broadcastMessage(message []byte) {
 }
 
 func (h *Hub) BroadcastUpdate(dock models.Dock) {
-	h.mu.Lock() // Add mutex lock
-	defer h.mu.Unlock()
+	// Removed unnecessary mutex lock
+	// Database operations are generally thread-safe
 
-	// First update the database
+	// Fetch the updated dock data
 	updatedDock, err := h.db.GetDockByID(dock.ID)
 	if err != nil {
 		log.Printf("Error getting updated dock: %v", err)
@@ -112,20 +111,11 @@ func (h *Hub) BroadcastUpdate(dock models.Dock) {
 	}
 
 	log.Printf("Broadcasting dock update: %s", string(message))
-	select {
-	case h.Broadcast <- message:
-		log.Printf("Successfully queued broadcast message")
-	default:
-		log.Printf("Warning: Broadcast channel full, message dropped")
-	}
 
-	// Send a full sync after update to ensure consistency
-	docks, err := h.db.GetAllDocks()
-	if err != nil {
-		log.Printf("Error fetching docks for full sync: %v", err)
-		return
-	}
-	h.BroadcastFullSync(docks)
+	// Send the update to all connected clients
+	h.Broadcast <- message
+
+	// Removed the call to BroadcastFullSync()
 }
 
 func (h *Hub) BroadcastFullSync(docks []models.Dock) {
@@ -173,14 +163,9 @@ func (c *Client) ReadPump() {
 			continue
 		}
 
-		// If client requests full sync, send it
 		if msgType, ok := msg["type"].(string); ok && msgType == "request_full_sync" {
-			docks, err := c.Hub.db.GetAllDocks()
-			if err != nil {
-				log.Printf("Error fetching docks for full sync: %v", err)
-				continue
-			}
-			c.Hub.BroadcastFullSync(docks)
+			// Send full sync to this client only
+			go c.SendFullSync()
 		}
 
 		log.Printf("Received message from client %s: %s", c.ID, string(message))
@@ -197,9 +182,39 @@ func (c *Client) WritePump() {
 	for {
 		select {
 		case <-ticker.C:
+			c.Conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
 			if err := c.Conn.WriteMessage(websocket.PingMessage, nil); err != nil {
+				log.Printf("Error sending ping to client %s: %v", c.ID, err)
 				return
 			}
 		}
+	}
+}
+
+func (c *Client) SendFullSync() {
+	docks, err := c.Hub.db.GetAllDocks()
+	if err != nil {
+		log.Printf("Error fetching docks for full sync: %v", err)
+		return
+	}
+
+	fullSync := models.FullSync{
+		Type:      "full_sync",
+		Docks:     docks,
+		Timestamp: time.Now().Unix(),
+	}
+
+	message, err := json.Marshal(fullSync)
+	if err != nil {
+		log.Printf("Error marshaling full sync: %v", err)
+		return
+	}
+
+	err = c.Conn.WriteMessage(websocket.TextMessage, message)
+	if err != nil {
+		log.Printf("Error sending full sync to client %s: %v", c.ID, err)
+		c.Hub.Unregister <- c
+	} else {
+		log.Printf("Successfully sent full sync to client %s", c.ID)
 	}
 }
