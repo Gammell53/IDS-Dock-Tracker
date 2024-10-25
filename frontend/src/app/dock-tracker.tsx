@@ -65,62 +65,55 @@ export default function DockTracker() {
     }
   }, [])
 
+  const handleWebSocketMessage = useCallback((event: MessageEvent) => {
+    try {
+      const data = JSON.parse(event.data);
+      console.log('WebSocket message received:', data);
+
+      if (data.type === 'dock_updated') {
+        setDocks(prevDocks => {
+          return prevDocks.map(dock => 
+            dock.id === data.data.id ? { ...data.data, name: getDockName(data.data) } : dock
+          );
+        });
+      } else if (data.type === 'full_sync') {
+        setDocks(data.docks.map((dock: Dock) => ({...dock, name: getDockName(dock)})));
+      }
+    } catch (error) {
+      console.error('Error processing WebSocket message:', error);
+    }
+  }, []);
+
   const setupWebSocket = useCallback(() => {
-    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-      console.log('[WebSocket] Connection already open')
-      return
+    if (wsRef.current?.readyState === WebSocket.OPEN) {
+      console.log('WebSocket connection already open');
+      return;
     }
 
-    console.log('[WebSocket] Setting up new connection')
-    const ws = new WebSocket(WS_URL)
+    console.log('Setting up new WebSocket connection');
+    const ws = new WebSocket(WS_URL);
 
     ws.onopen = () => {
-      console.log('[WebSocket] Connection opened')
-      ws.send(JSON.stringify({ type: "request_full_sync" }))
-      setError(null) // Clear any previous errors
-    }
+      console.log('WebSocket connection opened');
+      ws.send(JSON.stringify({ type: "request_full_sync" }));
+    };
 
-    ws.onmessage = async (event) => {
-      try {
-        console.log('[WebSocket] Received message:', event.data)
-        const jsonData = JSON.parse(event.data)
-        
-        if (jsonData.type === 'dock_updated') {
-          console.log('[WebSocket] Processing dock update:', jsonData.data)
-          setDocks(prevDocks => {
-            const newDocks = prevDocks.map(dock => 
-              dock.id === jsonData.data.id ? {...jsonData.data, name: getDockName(jsonData.data)} : dock
-            )
-            console.log('[WebSocket] Updated docks:', newDocks)
-            return newDocks
-          })
-          setError(null)
-        } else if (jsonData.type === 'full_sync') {
-          console.log('[WebSocket] Processing full sync with', jsonData.docks.length, 'docks')
-          setDocks(jsonData.docks.map((dock: Dock) => ({...dock, name: getDockName(dock)})))
-          lastSyncTimestampRef.current = jsonData.timestamp
-          setError(null)
-        }
-      } catch (error) {
-        console.error('[WebSocket] Error processing message:', error)
-      }
-    }
+    ws.onmessage = handleWebSocketMessage;
 
     ws.onclose = () => {
-      console.log('[WebSocket] Connection closed, attempting to reconnect...')
+      console.log('WebSocket connection closed');
       if (reconnectTimeoutRef.current) {
-        clearTimeout(reconnectTimeoutRef.current)
+        clearTimeout(reconnectTimeoutRef.current);
       }
-      reconnectTimeoutRef.current = setTimeout(setupWebSocket, 5000)
-    }
+      reconnectTimeoutRef.current = setTimeout(setupWebSocket, 5000);
+    };
 
     ws.onerror = (error) => {
-      console.error('[WebSocket] Error:', error)
-      setError('WebSocket error occurred')
-    }
+      console.error('WebSocket error:', error);
+    };
 
-    wsRef.current = ws
-  }, [])
+    wsRef.current = ws;
+  }, [handleWebSocketMessage]);
 
   useEffect(() => {
     fetchDocks()
@@ -190,18 +183,9 @@ export default function DockTracker() {
 
   const updateDockStatus = async (id: number, status: DockStatus) => {
     try {
-      console.log(`[updateDockStatus] Starting update for dock ${id} to status ${status}`);
       const token = localStorage.getItem('token');
       
-      // Optimistic update
-      console.log(`[updateDockStatus] Applying optimistic update`);
-      setDocks(prevDocks => 
-        prevDocks.map(dock => 
-          dock.id === id ? {...dock, status} : dock
-        )
-      );
-
-      console.log(`[updateDockStatus] Sending PUT request to ${API_URL}/docks/${id}`);
+      // Send update to server
       const response = await fetch(`${API_URL}/docks/${id}`, {
         method: 'PUT',
         headers: {
@@ -209,23 +193,19 @@ export default function DockTracker() {
           'Authorization': `Bearer ${token}`,
         },
         body: JSON.stringify({ status }),
-      })
+      });
 
       if (!response.ok) {
-        const errorData = await response.json()
-        console.error(`[updateDockStatus] Server responded with error:`, errorData);
-        throw new Error(`Failed to update dock status: ${response.status} ${response.statusText}. ${JSON.stringify(errorData)}`)
+        throw new Error('Failed to update dock status');
       }
 
-      const updatedDock = await response.json();
-      console.log(`[updateDockStatus] Server confirmed update:`, updatedDock);
+      // Server will broadcast the update via WebSocket
+      // No need to update state here as we'll receive the update via WebSocket
     } catch (error) {
-      console.error('[updateDockStatus] Error:', error)
-      // Revert the optimistic update
-      console.log('[updateDockStatus] Reverting optimistic update');
-      fetchDocks()
+      console.error('Error updating dock status:', error);
+      // Optionally show an error message to the user
     }
-  }
+  };
 
   const filteredDocks = useMemo(() => {
     let filtered = docks.filter(dock => dock.location === activeTab)

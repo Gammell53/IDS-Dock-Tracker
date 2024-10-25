@@ -92,8 +92,20 @@ func (h *Hub) BroadcastUpdate(dock models.Dock) {
 		return
 	}
 
+	h.mu.RLock()
 	log.Printf("Broadcasting dock update to %d clients", len(h.clients))
-	h.Broadcast <- message // Capital B
+	for id, client := range h.clients {
+		// Send to each client individually to avoid blocking
+		go func(clientID string, c *Client, msg []byte) {
+			if err := c.Conn.WriteMessage(websocket.TextMessage, msg); err != nil {
+				log.Printf("Error sending message to client %s: %v", clientID, err)
+				h.Unregister <- c
+			} else {
+				log.Printf("Message sent successfully to client %s", clientID)
+			}
+		}(id, client, message)
+	}
+	h.mu.RUnlock()
 }
 
 func (h *Hub) BroadcastFullSync(docks []models.Dock) {
