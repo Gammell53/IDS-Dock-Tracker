@@ -43,6 +43,7 @@ func (h *Hub) Run() {
 		select {
 		case client := <-h.Register:
 			h.mu.Lock()
+			client.Send = make(chan []byte, 256) // Initialize Send channel
 			h.clients[client.ID] = client
 			h.mu.Unlock()
 			log.Printf("Client %s connected. Total clients: %d", client.ID, len(h.clients))
@@ -58,6 +59,7 @@ func (h *Hub) Run() {
 		case client := <-h.Unregister:
 			h.mu.Lock()
 			if _, ok := h.clients[client.ID]; ok {
+				close(client.Send)
 				delete(h.clients, client.ID)
 				client.Conn.Close()
 			}
@@ -68,12 +70,14 @@ func (h *Hub) Run() {
 			h.mu.RLock()
 			log.Printf("Broadcasting message to %d clients", len(h.clients))
 			for id, client := range h.clients {
-				if err := client.Conn.WriteMessage(websocket.TextMessage, message); err != nil {
-					log.Printf("Error sending message to client %s: %v", id, err)
-					client.Conn.Close()
+				select {
+				case client.Send <- message:
+					log.Printf("Message queued for client %s", id)
+				default:
+					log.Printf("Client %s message buffer full, closing connection", id)
+					close(client.Send)
 					delete(h.clients, id)
-				} else {
-					log.Printf("Message sent successfully to client %s", id)
+					client.Conn.Close()
 				}
 			}
 			h.mu.RUnlock()
@@ -94,23 +98,7 @@ func (h *Hub) BroadcastUpdate(dock models.Dock) {
 		return
 	}
 
-	h.mu.RLock()
-	log.Printf("Broadcasting dock update to %d clients", len(h.clients))
-	for id, client := range h.clients {
-		select {
-		case client.Send <- message:
-			log.Printf("Queued message for client %s", id)
-		default:
-			log.Printf("Client %s message buffer full, closing connection", id)
-			h.mu.RUnlock()
-			h.mu.Lock()
-			delete(h.clients, id)
-			client.Conn.Close()
-			h.mu.Unlock()
-			h.mu.RLock()
-		}
-	}
-	h.mu.RUnlock()
+	h.Broadcast <- message
 }
 
 func (h *Hub) BroadcastFullSync(docks []models.Dock) {
@@ -153,24 +141,26 @@ func (c *Client) WritePump() {
 	ticker := time.NewTicker(54 * time.Second)
 	defer func() {
 		ticker.Stop()
-		c.Conn.Close()
+		c.Hub.Unregister <- c
 	}()
+
 	for {
 		select {
 		case message, ok := <-c.Send:
-			c.Conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
 			if !ok {
 				c.Conn.WriteMessage(websocket.CloseMessage, []byte{})
 				return
 			}
 
+			c.Conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
 			w, err := c.Conn.NextWriter(websocket.TextMessage)
 			if err != nil {
 				return
 			}
+
 			w.Write(message)
 
-			// Add queued messages to the current websocket message
+			// Add queued messages
 			n := len(c.Send)
 			for i := 0; i < n; i++ {
 				w.Write([]byte{'\n'})
@@ -180,6 +170,7 @@ func (c *Client) WritePump() {
 			if err := w.Close(); err != nil {
 				return
 			}
+
 		case <-ticker.C:
 			c.Conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
 			if err := c.Conn.WriteMessage(websocket.PingMessage, nil); err != nil {
