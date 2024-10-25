@@ -25,7 +25,6 @@ type Client struct {
 	ID   string
 	Conn *websocket.Conn
 	Hub  *Hub
-	Send chan []byte // Add this line
 }
 
 func NewHub(db *database.DB) *Hub { // Use the correct package for DB
@@ -43,7 +42,6 @@ func (h *Hub) Run() {
 		select {
 		case client := <-h.Register:
 			h.mu.Lock()
-			client.Send = make(chan []byte, 256) // Initialize Send channel
 			h.clients[client.ID] = client
 			h.mu.Unlock()
 			log.Printf("Client %s connected. Total clients: %d", client.ID, len(h.clients))
@@ -59,7 +57,6 @@ func (h *Hub) Run() {
 		case client := <-h.Unregister:
 			h.mu.Lock()
 			if _, ok := h.clients[client.ID]; ok {
-				close(client.Send)
 				delete(h.clients, client.ID)
 				client.Conn.Close()
 			}
@@ -70,14 +67,17 @@ func (h *Hub) Run() {
 			h.mu.RLock()
 			log.Printf("Broadcasting message to %d clients", len(h.clients))
 			for id, client := range h.clients {
-				select {
-				case client.Send <- message:
-					log.Printf("Message queued for client %s", id)
-				default:
-					log.Printf("Client %s message buffer full, closing connection", id)
-					close(client.Send)
-					delete(h.clients, id)
+				err := client.Conn.WriteMessage(websocket.TextMessage, message)
+				if err != nil {
+					log.Printf("Error sending message to client %s: %v", id, err)
 					client.Conn.Close()
+					h.mu.RUnlock()
+					h.mu.Lock()
+					delete(h.clients, id)
+					h.mu.Unlock()
+					h.mu.RLock()
+				} else {
+					log.Printf("Message sent successfully to client %s", id)
 				}
 			}
 			h.mu.RUnlock()
@@ -98,6 +98,7 @@ func (h *Hub) BroadcastUpdate(dock models.Dock) {
 		return
 	}
 
+	log.Printf("Broadcasting dock update: %s", string(message))
 	h.Broadcast <- message
 }
 
@@ -114,17 +115,22 @@ func (h *Hub) BroadcastFullSync(docks []models.Dock) {
 		return
 	}
 
+	log.Printf("Broadcasting full sync: %s", string(message))
 	h.Broadcast <- message // Capital B
 }
 
 func (c *Client) ReadPump() {
 	defer func() {
 		c.Hub.Unregister <- c
-		c.Conn.Close()
 	}()
+
 	c.Conn.SetReadLimit(512)
 	c.Conn.SetReadDeadline(time.Now().Add(60 * time.Second))
-	c.Conn.SetPongHandler(func(string) error { c.Conn.SetReadDeadline(time.Now().Add(60 * time.Second)); return nil })
+	c.Conn.SetPongHandler(func(string) error {
+		c.Conn.SetReadDeadline(time.Now().Add(60 * time.Second))
+		return nil
+	})
+
 	for {
 		_, message, err := c.Conn.ReadMessage()
 		if err != nil {
@@ -133,7 +139,7 @@ func (c *Client) ReadPump() {
 			}
 			break
 		}
-		log.Printf("Received message from client %s: %s", c.ID, message)
+		log.Printf("Received message from client %s: %s", c.ID, string(message))
 	}
 }
 
@@ -146,33 +152,7 @@ func (c *Client) WritePump() {
 
 	for {
 		select {
-		case message, ok := <-c.Send:
-			if !ok {
-				c.Conn.WriteMessage(websocket.CloseMessage, []byte{})
-				return
-			}
-
-			c.Conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
-			w, err := c.Conn.NextWriter(websocket.TextMessage)
-			if err != nil {
-				return
-			}
-
-			w.Write(message)
-
-			// Add queued messages
-			n := len(c.Send)
-			for i := 0; i < n; i++ {
-				w.Write([]byte{'\n'})
-				w.Write(<-c.Send)
-			}
-
-			if err := w.Close(); err != nil {
-				return
-			}
-
 		case <-ticker.C:
-			c.Conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
 			if err := c.Conn.WriteMessage(websocket.PingMessage, nil); err != nil {
 				return
 			}
