@@ -219,7 +219,15 @@ export default function DockTracker() {
     };
   }, [setupWebSocket, checkDataFreshness, fetchDocks]);
 
-  const updateDockStatus = async (dockId: number, newStatus: string) => {
+  const updateDockStatus = async (dockId: number, newStatus: DockStatus) => {
+    // Find the previous status
+    const previousDock = docks.find(dock => dock.id === dockId);
+    if (!previousDock) {
+      console.error('Dock not found');
+      return;
+    }
+    const previousStatus = previousDock.status;
+
     // Optimistically update local state
     setDocks((prevDocks) =>
       prevDocks.map((dock) =>
@@ -241,12 +249,14 @@ export default function DockTracker() {
       }
     } catch (error) {
       console.error('Error updating dock status:', error);
+
       // Revert to previous state
       setDocks((prevDocks) =>
         prevDocks.map((dock) =>
-          dock.id === dockId ? { ...dock, status: /* previous status */ } : dock
+          dock.id === dockId ? { ...dock, status: previousStatus } : dock
         )
       );
+
       // Notify user of the error
       setError('Failed to update dock status. Please try again.');
     }
@@ -393,4 +403,3 @@ function getDockName(dock: Dock) {
   }
   return `Dock ${dock.number}`
 }
-
