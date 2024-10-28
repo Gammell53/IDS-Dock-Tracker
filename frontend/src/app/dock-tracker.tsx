@@ -109,54 +109,53 @@ interface ThemeConfig {
 // Type the THEME constant
 const THEME: ThemeConfig = {
   light: {
-    background: 'bg-gray-100',  // Darker background
+    background: 'bg-gray-100',
     header: 'bg-white border-gray-200',
     surface: {
-      primary: 'bg-white border border-gray-300',  // Darker border
+      primary: 'bg-white border border-gray-300 shadow-sm',
       secondary: 'bg-gray-50 border border-gray-200',
     },
     text: {
-      primary: 'text-gray-900',  // Already dark
-      secondary: 'text-gray-600',  // Darker secondary text
+      primary: 'text-gray-900',
+      secondary: 'text-gray-600',
     },
     status: {
       available: {
-        bg: 'bg-emerald-100',  // Slightly darker green
-        text: 'text-emerald-800',  // Darker text
+        bg: 'bg-emerald-50 hover:bg-emerald-100',
+        text: 'text-emerald-700',
         border: 'border-emerald-200',
       },
       occupied: {
-        bg: 'bg-amber-100',
-        text: 'text-amber-800',
+        bg: 'bg-amber-50 hover:bg-amber-100',
+        text: 'text-amber-700',
         border: 'border-amber-200',
       },
       'out-of-service': {
-        bg: 'bg-red-100',
-        text: 'text-red-800',
+        bg: 'bg-red-50 hover:bg-red-100',
+        text: 'text-red-700',
         border: 'border-red-200',
       },
       deiced: {
-        bg: 'bg-blue-100',
-        text: 'text-blue-800',
+        bg: 'bg-blue-50 hover:bg-blue-100',
+        text: 'text-blue-700',
         border: 'border-blue-200',
       },
     },
     input: {
-      bg: 'bg-gray-50',  // Slightly darker input background
-      border: 'border-gray-300',  // Darker border
+      bg: 'bg-white',
+      border: 'border-gray-300 focus:border-blue-500',
       text: 'text-gray-900',
     },
     monitor: {
-      bg: 'bg-emerald-100',
-      text: 'text-emerald-800',
-      subtext: 'text-emerald-700',
-      button: 'bg-emerald-200 hover:bg-emerald-300 text-emerald-800',
+      bg: 'bg-emerald-50',
+      text: 'text-emerald-700',
+      subtext: 'text-emerald-600',
+      button: 'bg-emerald-100 hover:bg-emerald-200 text-emerald-700',
     },
   },
   dark: {
-    // Dark theme remains unchanged
     background: 'bg-gray-900',
-    header: 'bg-gray-800 border-gray-700',
+    header: 'bg-gray-800/80 backdrop-blur-sm border-gray-700',
     surface: {
       primary: 'bg-gray-800 border border-gray-700',
       secondary: 'bg-gray-800/50 border border-gray-700',
@@ -167,35 +166,35 @@ const THEME: ThemeConfig = {
     },
     status: {
       available: {
-        bg: 'bg-emerald-500/10',
+        bg: 'bg-emerald-500/10 hover:bg-emerald-500/20',
         text: 'text-emerald-400',
         border: 'border-emerald-500/20',
       },
       occupied: {
-        bg: 'bg-amber-500/10',
+        bg: 'bg-amber-500/10 hover:bg-amber-500/20',
         text: 'text-amber-400',
         border: 'border-amber-500/20',
       },
       'out-of-service': {
-        bg: 'bg-red-500/10',
+        bg: 'bg-red-500/10 hover:bg-red-500/20',
         text: 'text-red-400',
         border: 'border-red-500/20',
       },
       deiced: {
-        bg: 'bg-blue-500/10',
+        bg: 'bg-blue-500/10 hover:bg-blue-500/20',
         text: 'text-blue-400',
         border: 'border-blue-500/20',
       },
     },
     input: {
       bg: 'bg-gray-700',
-      border: 'border-gray-600',
+      border: 'border-gray-600 focus:border-blue-500',
       text: 'text-white',
     },
     monitor: {
       bg: 'bg-emerald-500/10',
       text: 'text-emerald-400',
-      subtext: 'text-emerald-300/70',
+      subtext: 'text-emerald-400/70',
       button: 'bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-400',
     },
   },
@@ -281,17 +280,8 @@ export default function DockTracker() {
                 )
             );
             
-            // Set animation and play a subtle sound if available
+            // Set animation only
             setRecentlyChanged(prev => new Set(prev).add(updatedDock.id));
-            
-            // Optional: Play a subtle sound effect
-            try {
-              const audio = new Audio('/status-change.mp3'); // You'll need to add this sound file
-              audio.volume = 0.2;
-              audio.play();
-            } catch (error) {
-              console.log('Sound not available');
-            }
             
         } else if (data.type === 'full_sync') {
             if (data.timestamp > lastSyncTimestampRef.current) {
@@ -620,23 +610,47 @@ export default function DockTracker() {
         role="banner"
       >
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
-          <div className="flex justify-between items-center">
-            <div className="flex items-center space-x-3">
-              <div 
-                className="p-2 bg-gradient-to-r from-blue-500 to-indigo-500 rounded-lg"
-                aria-hidden="true" // Hide decorative icon from screen readers
-              >
-                <PlaneLanding className="h-6 w-6 text-white" />
+          {/* Mobile layout - visible only on small screens */}
+          <div className="sm:hidden flex flex-col space-y-4">
+            {/* Logo and Title */}
+            <div className="flex items-center justify-between">
+              <div className="flex items-center space-x-3">
+                <div 
+                  className="p-2 bg-gradient-to-r from-blue-500 to-indigo-500 rounded-lg"
+                  aria-hidden="true"
+                >
+                  <PlaneLanding className="h-6 w-6 text-white" />
+                </div>
+                <h1 className={`text-xl font-bold ${THEME[theme].text.primary}`}>
+                  IDS Dock Tracker
+                </h1>
               </div>
-              <h1 className={`text-2xl font-bold ${THEME[theme].text.primary}`}>
-                IDS Dock Tracker
-              </h1>
+              {/* Theme and Logout in top row on mobile */}
+              <div className="flex items-center space-x-2">
+                <button
+                  onClick={toggleTheme}
+                  className="p-2 rounded-lg transition-all duration-200"
+                  aria-label={`Switch to ${theme === 'dark' ? 'light' : 'dark'} mode`}
+                  aria-pressed={theme === 'dark'}
+                >
+                  <span aria-hidden="true">{theme === 'dark' ? '🌙' : '☀️'}</span>
+                </button>
+                <button
+                  onClick={logout}
+                  className="px-3 py-1.5 text-sm bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white rounded-lg transition-all duration-200 font-medium"
+                  aria-label="Logout from application"
+                >
+                  Logout
+                </button>
+              </div>
             </div>
-            <div className="flex items-center space-x-4" role="toolbar" aria-label="Main controls">
+
+            {/* Monitor Controls in second row on mobile */}
+            <div className="flex items-center justify-between space-x-2">
               {isMonitorMode ? (
                 <button
                   onClick={() => setMonitoredDockIds(new Set())}
-                  className="px-4 py-2 bg-green-500/20 text-green-400 rounded-lg hover:bg-green-500/30 transition-all duration-200"
+                  className="flex-1 px-3 py-1.5 text-sm bg-green-500/20 text-green-400 rounded-lg hover:bg-green-500/30 transition-all duration-200"
                   aria-label="Clear all monitored docks"
                 >
                   Clear All
@@ -644,7 +658,7 @@ export default function DockTracker() {
               ) : (
                 <button
                   onClick={() => setMonitoredDockIds(new Set(docks.filter(d => d.location === activeTab).map(d => d.id)))}
-                  className="px-4 py-2 bg-green-500/20 text-green-400 rounded-lg hover:bg-green-500/30 transition-all duration-200"
+                  className="flex-1 px-3 py-1.5 text-sm bg-green-500/20 text-green-400 rounded-lg hover:bg-green-500/30 transition-all duration-200"
                   aria-label="Monitor all docks in current terminal"
                 >
                   Monitor All
@@ -652,27 +666,66 @@ export default function DockTracker() {
               )}
               <button
                 onClick={() => setIsMonitorMode(!isMonitorMode)}
-                className={`px-4 py-2 rounded-lg transition-all duration-200 font-medium shadow-lg
+                className={`flex-1 px-3 py-1.5 text-sm rounded-lg transition-all duration-200 font-medium
                   ${isMonitorMode 
-                    ? 'bg-green-600 hover:bg-green-700 text-white shadow-green-500/20' 
-                    : 'bg-gray-600 hover:bg-gray-700 text-white shadow-gray-500/20'}`}
+                    ? 'bg-green-600 hover:bg-green-700 text-white' 
+                    : 'bg-gray-600 hover:bg-gray-700 text-white'}`}
                 aria-pressed={isMonitorMode}
                 aria-label={`${isMonitorMode ? 'Exit' : 'Enter'} monitor mode`}
               >
-                {isMonitorMode ? 'Exit Monitor Mode' : 'Monitor Mode'}
+                {isMonitorMode ? 'Exit Monitor' : 'Monitor'}
+              </button>
+            </div>
+          </div>
+
+          {/* Desktop layout - visible only on larger screens */}
+          <div className="hidden sm:flex sm:justify-between sm:items-center">
+            <div className="flex items-center space-x-3">
+              <div 
+                className="p-2 bg-gradient-to-r from-blue-500 to-indigo-500 rounded-lg"
+                aria-hidden="true"
+              >
+                <PlaneLanding className="h-6 w-6 text-white" />
+              </div>
+              <h1 className={`text-2xl font-bold ${THEME[theme].text.primary}`}>
+                IDS Dock Tracker
+              </h1>
+            </div>
+
+            <div className="flex items-center space-x-4">
+              {isMonitorMode ? (
+                <button
+                  onClick={() => setMonitoredDockIds(new Set())}
+                  className="px-4 py-2 bg-green-500/20 text-green-400 rounded-lg hover:bg-green-500/30 transition-all duration-200"
+                >
+                  Clear All
+                </button>
+              ) : (
+                <button
+                  onClick={() => setMonitoredDockIds(new Set(docks.filter(d => d.location === activeTab).map(d => d.id)))}
+                  className="px-4 py-2 bg-green-500/20 text-green-400 rounded-lg hover:bg-green-500/30 transition-all duration-200"
+                >
+                  Monitor All
+                </button>
+              )}
+              <button
+                onClick={() => setIsMonitorMode(!isMonitorMode)}
+                className={`px-4 py-2 rounded-lg transition-all duration-200 font-medium
+                  ${isMonitorMode 
+                    ? 'bg-green-600 hover:bg-green-700 text-white' 
+                    : 'bg-gray-600 hover:bg-gray-700 text-white'}`}
+              >
+                {isMonitorMode ? 'Exit Monitor' : 'Monitor'}
               </button>
               <button
                 onClick={toggleTheme}
-                className={`p-2 rounded-lg transition-all duration-200`}
-                aria-label={`Switch to ${theme === 'dark' ? 'light' : 'dark'} mode`}
-                aria-pressed={theme === 'dark'}
+                className="p-2 rounded-lg transition-all duration-200"
               >
                 <span aria-hidden="true">{theme === 'dark' ? '🌙' : '☀️'}</span>
               </button>
               <button
                 onClick={logout}
-                className="px-4 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white rounded-lg transition-all duration-200 font-medium shadow-lg shadow-blue-500/20"
-                aria-label="Logout from application"
+                className="px-4 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white rounded-lg transition-all duration-200 font-medium"
               >
                 Logout
               </button>
@@ -722,22 +775,22 @@ export default function DockTracker() {
               <button 
                 key={status} 
                 className={`${THEME[theme].surface.primary} ${statusTheme.bg} 
-                  rounded-lg p-4 cursor-pointer transition-all duration-200
+                  rounded-lg p-4 cursor-pointer transition-all duration-200 h-24
                   ${statusFilter === status ? 'ring-2 ring-blue-500' : ''}`}
                 onClick={() => handleStatusClick(status as DockStatus)}
                 aria-pressed={statusFilter === status}
                 aria-label={`Filter by ${status.replace('-', ' ')} status: ${count} docks`}
               >
-                <div className="flex items-center justify-between">
-                  <div>
+                <div className="flex items-center justify-between h-full">
+                  <div className="flex flex-col justify-center">
                     <p className={`text-sm font-medium uppercase tracking-wider ${statusTheme.text}`}>
                       {status.replace('-', ' ')}
                     </p>
-                    <p className={`text-3xl font-bold ${THEME[theme].text.primary}`}>
+                    <p className={`text-3xl font-bold ${THEME[theme].text.primary} mt-1`}>
                       {count}
                     </p>
                   </div>
-                  <div aria-hidden="true">
+                  <div className="flex items-center justify-center" aria-hidden="true">
                     {getStatusIcon(status as DockStatus, -1)}
                   </div>
                 </div>
@@ -745,6 +798,42 @@ export default function DockTracker() {
             );
           })}
         </div>
+
+        {/* Monitor Mode Banner - Now positioned below status overview */}
+        {isMonitorMode && (
+          <div 
+            className="mb-8"
+            role="status"
+            aria-live="polite"
+          >
+            <div className={`${THEME[theme].surface.primary} 
+              rounded-lg shadow-lg p-4 border border-emerald-200 dark:border-emerald-500/20`}
+            >
+              <div className="flex items-center justify-between">
+                <div className="flex items-center space-x-3">
+                  <div className={`p-2 rounded-full ${THEME[theme].monitor.bg}`} aria-hidden="true">
+                    <Eye className={`h-5 w-5 ${THEME[theme].monitor.text}`} />
+                  </div>
+                  <div>
+                    <h3 className={`font-medium ${THEME[theme].monitor.text}`}>
+                      Monitor Mode Active
+                    </h3>
+                    <p className={THEME[theme].monitor.subtext}>
+                      Monitoring {monitoredDockIds.size} dock{monitoredDockIds.size !== 1 ? 's' : ''}
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setIsMonitorMode(false)}
+                  className={`px-4 py-2 rounded-lg ${THEME[theme].monitor.button}`}
+                  aria-label="Exit monitor mode"
+                >
+                  Exit Monitor Mode
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Dock Status Grid with improved accessibility */}
         <div 
@@ -827,42 +916,6 @@ export default function DockTracker() {
           </div>
         </div>
       </main>
-
-      {/* Monitor Mode Banner with improved accessibility */}
-      {isMonitorMode && (
-        <div 
-          className="fixed bottom-4 left-4 right-4 z-50"
-          role="status"
-          aria-live="polite"
-        >
-          <div className={`max-w-xl mx-auto ${THEME[theme].surface.primary} 
-            rounded-lg shadow-lg p-4 border border-emerald-200 dark:border-emerald-500/20`}
-          >
-            <div className="flex items-center justify-between">
-              <div className="flex items-center space-x-3">
-                <div className={`p-2 rounded-full ${THEME[theme].monitor.bg}`} aria-hidden="true">
-                  <Eye className={`h-5 w-5 ${THEME[theme].monitor.text}`} />
-                </div>
-                <div>
-                  <h3 className={`font-medium ${THEME[theme].monitor.text}`}>
-                    Monitor Mode Active
-                  </h3>
-                  <p className={THEME[theme].monitor.subtext}>
-                    Monitoring {monitoredDockIds.size} dock{monitoredDockIds.size !== 1 ? 's' : ''}
-                  </p>
-                </div>
-              </div>
-              <button
-                onClick={() => setIsMonitorMode(false)}
-                className={`px-4 py-2 rounded-lg ${THEME[theme].monitor.button}`}
-                aria-label="Exit monitor mode"
-              >
-                Exit Monitor Mode
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   )
 }
