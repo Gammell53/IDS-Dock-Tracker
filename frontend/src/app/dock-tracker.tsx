@@ -425,10 +425,10 @@ export default function DockTracker() {
                 const xConfig = xDockConfigs.find(config => config.xDockId === dock.id);
                 if (xConfig && dock.status !== 'available') {
                     // Ensure its children are available
-                    const childDocks = processedDocks.filter(d => 
+                    const childDocks = processedDocks.filter((d: Dock) => 
                         xConfig.adjacentDockIds.includes(d.id)
                     );
-                    childDocks.forEach(childDock => {
+                    childDocks.forEach((childDock: Dock) => {
                         childDock.status = 'available';
                     });
                 }
