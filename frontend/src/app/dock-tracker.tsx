@@ -16,8 +16,11 @@ interface Dock {
   status: DockStatus
 }
 
-// Update the southwest dock names array
-const southwestDockNames = ['H84', 'H86', 'H87', 'H89', 'H90', 'H92', 'H93', 'H95', 'H96', 'H98', 'H99']
+// Update the southwest dock names array to match all 16 docks
+const southwestDockNames = [
+  'H84', 'H85X', 'H86', 'H87', 'H88X', 'H89', 'H90', 'H91X',
+  'H92', 'H93', 'H94X', 'H95', 'H96', 'H97X', 'H98', 'H99'
+];
 
 // Update these constants to match your nginx configuration
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'https://idsdock.com/api';
@@ -147,10 +150,10 @@ const THEME: ThemeConfig = {
       text: 'text-gray-900',
     },
     monitor: {
-      bg: 'bg-emerald-50',
-      text: 'text-emerald-700',
-      subtext: 'text-emerald-600',
-      button: 'bg-emerald-100 hover:bg-emerald-200 text-emerald-700',
+      bg: 'bg-cyan-50',
+      text: 'text-cyan-500',
+      subtext: 'text-cyan-600',
+      button: 'bg-cyan-500 hover:bg-cyan-600 text-white',
     },
   },
   dark: {
@@ -192,10 +195,10 @@ const THEME: ThemeConfig = {
       text: 'text-white',
     },
     monitor: {
-      bg: 'bg-emerald-500/10',
-      text: 'text-emerald-400',
-      subtext: 'text-emerald-400/70',
-      button: 'bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-400',
+      bg: 'bg-cyan-500/10',
+      text: 'text-cyan-400',
+      subtext: 'text-cyan-400/70',
+      button: 'bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-400',
     },
   },
 };
@@ -204,6 +207,109 @@ const THEME: ThemeConfig = {
 interface MonitoredDock extends Dock {
   isMonitored: boolean;
 }
+
+// Add these interfaces and helper functions near the top of the file
+interface XDockConfig {
+  xDockId: number;
+  adjacentDockIds: number[];
+}
+
+// Define the X dock configurations
+const xDockConfigs: XDockConfig[] = [
+  // Southwest Terminal X docks (IDs 1-16)
+  { xDockId: 2, adjacentDockIds: [1, 3] },     // H85X
+  { xDockId: 5, adjacentDockIds: [4, 6] },     // H88X
+  { xDockId: 8, adjacentDockIds: [7, 9] },     // H91X
+  { xDockId: 11, adjacentDockIds: [10, 12] },  // H94X
+  { xDockId: 14, adjacentDockIds: [13, 15] },  // H97X
+  
+  // Southeast Terminal X docks (IDs 17-30)
+  { xDockId: 25, adjacentDockIds: [24, 26] },  // Q91X
+  { xDockId: 28, adjacentDockIds: [27, 29] },  // Q88X
+  { xDockId: 30, adjacentDockIds: [29] },      // Q86X
+];
+
+// Add this function to check if a dock should be hidden due to X dock absorption
+const isDockAbsorbed = (dock: Dock, allDocks: Dock[]): boolean => {
+  // Find if this dock is adjacent to any X dock
+  const xConfig = xDockConfigs.find(config => 
+    config.adjacentDockIds.includes(dock.id)
+  );
+
+  if (!xConfig) return false;
+
+  // Find the X dock that could absorb this dock
+  const xDock = allDocks.find(d => d.id === xConfig.xDockId);
+  
+  // If the X dock exists and is not available, this dock should be absorbed
+  return xDock ? xDock.status !== 'available' : false;
+};
+
+// Add this function to get the display status for a dock
+const getEffectiveStatus = (dock: Dock, allDocks: Dock[]): DockStatus => {
+  // If this is an X dock, return its actual status
+  if (dock.name.includes('X')) {
+    return dock.status;
+  }
+
+  // Find if this dock is adjacent to any X dock
+  const xConfig = xDockConfigs.find(config => 
+    config.adjacentDockIds.includes(dock.id)
+  );
+
+  if (!xConfig) return dock.status;
+
+  // Find the X dock that could affect this dock
+  const xDock = allDocks.find(d => d.id === xConfig.xDockId);
+  
+  // If the X dock is not available, this dock inherits its status
+  if (xDock && xDock.status !== 'available') {
+    return xDock.status;
+  }
+
+  return dock.status;
+};
+
+// Add this helper function to get absorbed dock names
+const getAbsorbedDockNames = (dock: Dock, allDocks: Dock[]): string[] => {
+  // Only process X docks
+  if (!dock.name.includes('X')) return [];
+
+  // Find the X dock config
+  const xConfig = xDockConfigs.find(config => config.xDockId === dock.id);
+  if (!xConfig) return [];
+
+  // If dock is available, no absorption is happening
+  if (dock.status === 'available') return [];
+
+  // Get the names of absorbed docks
+  return xConfig.adjacentDockIds
+    .map(id => allDocks.find(d => d.id === id))
+    .filter((d): d is Dock => d !== undefined)
+    .map(d => d.name);
+};
+
+// Add this helper function to get all docks in an X dock group
+const getXDockGroup = (dockId: number, allDocks: Dock[]): number[] => {
+  // Check if this is an X dock
+  const xConfig = xDockConfigs.find(config => config.xDockId === dockId);
+  if (xConfig) {
+    // Return the X dock and its adjacent docks
+    return [xConfig.xDockId, ...xConfig.adjacentDockIds];
+  }
+  
+  // Check if this is adjacent to an X dock
+  const parentConfig = xDockConfigs.find(config => 
+    config.adjacentDockIds.includes(dockId)
+  );
+  if (parentConfig) {
+    // Return the X dock and its adjacent docks
+    return [parentConfig.xDockId, ...parentConfig.adjacentDockIds];
+  }
+  
+  // If not part of an X dock group, return just this dock
+  return [dockId];
+};
 
 export default function DockTracker() {
   const { theme, toggleTheme } = useTheme()
@@ -224,37 +330,49 @@ export default function DockTracker() {
 
   const fetchDocks = useCallback(async () => {
     try {
-      console.log('[fetchDocks] Fetching docks...')
-      const token = localStorage.getItem('token')
+      console.log('[fetchDocks] Starting fetch...');
+      const token = localStorage.getItem('token');
       if (!token) {
-        throw new Error('No token found')
+        console.error('[fetchDocks] No token found');
+        throw new Error('No token found');
       }
-      console.log('[fetchDocks] Using token:', token) // Add this log
+
+      console.log('[fetchDocks] API URL:', `${API_URL}/docks`);
       const response = await fetch(`${API_URL}/docks`, {
         headers: {
           'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json', // Add this header
+          'Content-Type': 'application/json',
         },
-      })
+      });
+
+      console.log('[fetchDocks] Response status:', response.status);
+      
       if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        console.error('[fetchDocks] Response not OK:', response.status, errorData);
-        throw new Error(errorData.message || 'Failed to fetch docks')
+        const errorText = await response.text();
+        console.error('[fetchDocks] Response not OK:', {
+          status: response.status,
+          statusText: response.statusText,
+          body: errorText
+        });
+        throw new Error(errorText || 'Failed to fetch docks');
       }
-      const data = await response.json()
-      setDocks(data.map((dock: Dock) => ({...dock, name: getDockName(dock)})))
-      setError(null)
-      setLoading(false)
-    } catch (error) {
-      console.error('[fetchDocks] Error fetching docks:', error)
-      if (error instanceof Error) {
-        setError(error.message)
-      } else {
-        setError('An unknown error occurred')
-      }
-      setLoading(false)
+
+      const data = await response.json();
+      console.log('[fetchDocks] Data received:', data);
+      
+      setDocks(data.map((dock: Dock) => ({...dock, name: getDockName(dock)})));
+      setError(null);
+      setLoading(false);
+    } catch (err: unknown) {
+      console.error('[fetchDocks] Error details:', {
+        name: err instanceof Error ? err.name : 'Unknown',
+        message: err instanceof Error ? err.message : 'Unknown error',
+        stack: err instanceof Error ? err.stack : undefined
+      });
+      setError(err instanceof Error ? err.message : 'Failed to fetch docks');
+      setLoading(false);
     }
-  }, [])
+  }, []);
 
   const handleWebSocketMessage = useCallback((event: MessageEvent) => {
     try {
@@ -262,42 +380,82 @@ export default function DockTracker() {
         console.log('WebSocket message received:', data);
 
         if (data.type === 'dock_updated') {
-            // Check timestamp first
-            if (data.timestamp <= lastSyncTimestampRef.current) {
-                console.log('Ignoring outdated update');
-                return;
-            }
-            
-            // Update timestamp
-            lastSyncTimestampRef.current = data.timestamp;
-            
-            // Update docks and trigger animation
-            const updatedDock = { ...data.data, name: getDockName(data.data) };
-            
-            setDocks(prevDocks => 
-                prevDocks.map(dock => 
+            setDocks(prevDocks => {
+                // Find the dock that was updated
+                const updatedDock = { ...data.data, name: getDockName(data.data) };
+                
+                // If this is an X dock, we need to handle its children
+                const xConfig = xDockConfigs.find(config => config.xDockId === updatedDock.id);
+                if (xConfig && updatedDock.status !== 'available') {
+                    // Create a new array with all updates
+                    return prevDocks.map(dock => {
+                        if (dock.id === updatedDock.id) {
+                            return updatedDock;
+                        }
+                        // Update adjacent docks to available if this is an X dock becoming unavailable
+                        if (xConfig.adjacentDockIds.includes(dock.id)) {
+                            return { ...dock, status: 'available' };
+                        }
+                        return dock;
+                    });
+                }
+                
+                // Regular dock update
+                return prevDocks.map(dock => 
                     dock.id === updatedDock.id ? updatedDock : dock
-                )
-            );
+                );
+            });
             
-            // Set animation only
-            setRecentlyChanged(prev => new Set(prev).add(updatedDock.id));
+            // Set animation
+            setRecentlyChanged(prev => new Set(prev).add(data.data.id));
             
         } else if (data.type === 'full_sync') {
-            if (data.timestamp > lastSyncTimestampRef.current) {
-                lastSyncTimestampRef.current = data.timestamp;
-                setDocks(data.docks.map((dock: Dock) => ({...dock, name: getDockName(dock)})));
-            }
+            // Update timestamp first
+            lastSyncTimestampRef.current = data.timestamp;
+            
+            // Process the full sync data
+            const processedDocks = data.docks.map((dock: Dock) => ({
+                ...dock,
+                name: getDockName(dock)
+            }));
+
+            // Handle X dock relationships in the full sync
+            const finalDocks = processedDocks.map((dock: Dock) => {
+                // If this is an X dock and it's not available
+                const xConfig = xDockConfigs.find(config => config.xDockId === dock.id);
+                if (xConfig && dock.status !== 'available') {
+                    // Ensure its children are available
+                    const childDocks = processedDocks.filter(d => 
+                        xConfig.adjacentDockIds.includes(d.id)
+                    );
+                    childDocks.forEach(childDock => {
+                        childDock.status = 'available';
+                    });
+                }
+                return dock;
+            });
+
+            setDocks(finalDocks);
         }
     } catch (error) {
         console.error('Error processing WebSocket message:', error);
-        if (wsRef.current?.readyState === WebSocket.OPEN) {
-            wsRef.current.send(JSON.stringify({ type: "request_full_sync" }));
-        }
+        // Request a full sync on error
+        requestFullSync();
     }
-  }, []);
+}, []);
 
-  const setupWebSocket = useCallback(() => {
+// Add a helper function to request full sync
+const requestFullSync = useCallback(() => {
+    console.log('Requesting full sync...');
+    if (wsRef.current?.readyState === WebSocket.OPEN) {
+        wsRef.current.send(JSON.stringify({ type: "request_full_sync" }));
+    } else {
+        console.log('WebSocket not connected, fetching docks via API');
+        fetchDocks();
+    }
+}, [fetchDocks]);
+
+const setupWebSocket = useCallback(() => {
     if (wsRef.current?.readyState === WebSocket.OPEN) {
         console.log('WebSocket connection already open');
         return;
@@ -308,23 +466,17 @@ export default function DockTracker() {
 
     ws.onopen = () => {
         console.log('WebSocket connection opened');
-        // Request immediate sync on connection
-        ws.send(JSON.stringify({ type: "request_full_sync" }));
-        // Clear any pending reconnect timeouts
-        if (reconnectTimeoutRef.current) {
-            clearTimeout(reconnectTimeoutRef.current);
-            reconnectTimeoutRef.current = null;
-        }
+        requestFullSync();
     };
 
     ws.onmessage = handleWebSocketMessage;
 
     ws.onclose = (event) => {
         console.log('WebSocket connection closed:', event.code, event.reason);
-        // Attempt immediate reconnect
         wsRef.current = null;
+        // Attempt reconnect after a short delay
         reconnectTimeoutRef.current = setTimeout(setupWebSocket, 1000);
-        // Also fetch latest data via HTTP
+        // Fetch latest data via HTTP
         fetchDocks();
     };
 
@@ -334,7 +486,7 @@ export default function DockTracker() {
     };
 
     wsRef.current = ws;
-}, [handleWebSocketMessage, fetchDocks]);
+}, [handleWebSocketMessage, fetchDocks, requestFullSync]);
 
   useEffect(() => {
     fetchDocks()
@@ -353,15 +505,10 @@ export default function DockTracker() {
   const checkDataFreshness = useCallback(() => {
     const now = Date.now();
     if (now - lastSyncTimestampRef.current > STALE_DATA_THRESHOLD) {
-      console.log('Data is stale, requesting full sync');
-      if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-        wsRef.current.send(JSON.stringify({ type: "request_full_sync" }));
-      } else {
-        console.log('WebSocket not connected, fetching docks via API');
-        fetchDocks();
-      }
+        console.log('Data is stale, requesting full sync');
+        requestFullSync();
     }
-  }, [fetchDocks]);
+}, [requestFullSync]);
 
   useEffect(() => {
     console.log('Setting up WebSocket connection');
@@ -411,63 +558,110 @@ export default function DockTracker() {
     }
     const previousStatus = previousDock.status;
 
-    // Optimistically update local state
+    // Check if this is an X dock
+    const xConfig = xDockConfigs.find(config => config.xDockId === dockId);
+    const isXDock = !!xConfig;
+
+    // Get the adjacent dock IDs if this is an X dock
+    const adjacentDockIds = xConfig?.adjacentDockIds || [];
+
+    // Prepare all updates (X dock and its children if applicable)
+    const updates: { id: number; status: DockStatus }[] = [
+      { id: dockId, status: newStatus }
+    ];
+
+    // If this is an X dock and it's changing from available to non-available,
+    // or from non-available to available, update the children
+    if (isXDock && previousStatus !== newStatus) {
+      if (newStatus !== 'available') {
+        // When X dock becomes occupied/out-of-service/deiced, set children to available
+        adjacentDockIds.forEach(childId => {
+          updates.push({ id: childId, status: 'available' });
+        });
+      }
+    }
+
+    // Optimistically update local state for all changes
     setDocks((prevDocks) =>
-      prevDocks.map((dock) =>
-        dock.id === dockId ? { ...dock, status: newStatus } : dock
-      )
+      prevDocks.map((dock) => {
+        const update = updates.find(u => u.id === dock.id);
+        return update ? { ...dock, status: update.status } : dock;
+      })
     );
 
     try {
+      // Send all updates to the server
       const token = localStorage.getItem('token');
-      const response = await fetch(`${API_URL}/docks/${dockId}/status`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`, // Include the Authorization header
-        },
-        body: JSON.stringify({ status: newStatus }),
-      });
+      
+      // Send updates sequentially to maintain order
+      for (const update of updates) {
+        const response = await fetch(`${API_URL}/docks/${update.id}/status`, {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`,
+          },
+          body: JSON.stringify({ status: update.status }),
+        });
 
-      if (!response.ok) {
-        throw new Error('Failed to update dock status');
+        if (!response.ok) {
+          throw new Error(`Failed to update dock ${update.id} status`);
+        }
       }
     } catch (error) {
       console.error('Error updating dock status:', error);
 
-      // Revert to previous state
+      // Revert all changes on error
       setDocks((prevDocks) =>
-        prevDocks.map((dock) =>
-          dock.id === dockId ? { ...dock, status: previousStatus } : dock
-        )
+        prevDocks.map((dock) => {
+          if (dock.id === dockId) {
+            return { ...dock, status: previousStatus };
+          }
+          if (adjacentDockIds.includes(dock.id)) {
+            // Find the original status of this dock
+            const originalDock = docks.find(d => d.id === dock.id);
+            return { ...dock, status: originalDock?.status || dock.status };
+          }
+          return dock;
+        })
       );
 
-      // Notify user of the error
       setError('Failed to update dock status. Please try again.');
     }
   };
 
   const filteredDocks = useMemo(() => {
-    let filtered = docks.filter(dock => dock.location === activeTab)
+    let filtered = docks.filter(dock => dock.location === activeTab);
+    
+    // Filter out absorbed docks unless they're X docks
+    filtered = filtered.filter(dock => 
+      dock.name.includes('X') || !isDockAbsorbed(dock, docks)
+    );
+    
     if (statusFilter) {
-      filtered = filtered.filter(dock => dock.status === statusFilter)
+      filtered = filtered.filter(dock => getEffectiveStatus(dock, docks) === statusFilter);
     }
+    
     if (isMonitorMode) {
-      filtered = filtered.filter(dock => monitoredDockIds.has(dock.id))
+      filtered = filtered.filter(dock => monitoredDockIds.has(dock.id));
     }
-    return filtered
-  }, [docks, activeTab, statusFilter, isMonitorMode, monitoredDockIds])
+    
+    return filtered;
+  }, [docks, activeTab, statusFilter, isMonitorMode, monitoredDockIds]);
 
   const statusCounts = useMemo(() => {
     const counts = docks
       .filter(dock => dock.location === activeTab)
       .reduce((acc, dock) => {
-        acc[dock.status]++
-        return acc
-      }, { available: 0, occupied: 0, 'out-of-service': 0, deiced: 0 } as Record<DockStatus, number>)
+        // Only count visible docks
+        if (!isDockAbsorbed(dock, docks)) {
+          acc[getEffectiveStatus(dock, docks)]++;
+        }
+        return acc;
+      }, { available: 0, occupied: 0, 'out-of-service': 0, deiced: 0 } as Record<DockStatus, number>);
     
-    return counts
-  }, [docks, activeTab])
+    return counts;
+  }, [docks, activeTab]);
 
   const getStatusIcon = (status: DockStatus, dockId: number) => {
     const baseClasses = "transition-all duration-300 transform"
@@ -549,18 +743,23 @@ export default function DockTracker() {
     setStatusFilter(prevStatus => prevStatus === status ? null : status)
   }
 
-  // Update the toggleDockMonitoring function to remove the 3-dock limit
+  // Update the toggleDockMonitoring function
   const toggleDockMonitoring = useCallback((dockId: number) => {
+    const groupDockIds = getXDockGroup(dockId, docks);
+    const isGroupMonitored = groupDockIds.some(id => monitoredDockIds.has(id));
+    
     setMonitoredDockIds(prev => {
       const newSet = new Set(prev);
-      if (newSet.has(dockId)) {
-        newSet.delete(dockId);
+      if (isGroupMonitored) {
+        // Remove all docks in the group
+        groupDockIds.forEach(id => newSet.delete(id));
       } else {
-        newSet.add(dockId);
+        // Add all docks in the group
+        groupDockIds.forEach(id => newSet.add(id));
       }
       return newSet;
     });
-  }, []);
+  }, [docks, monitoredDockIds]);
 
   if (loading) {
     console.log('Rendering loading state');
@@ -649,32 +848,25 @@ export default function DockTracker() {
             <div className="flex items-center justify-between space-x-2">
               {isMonitorMode ? (
                 <button
-                  onClick={() => setMonitoredDockIds(new Set())}
-                  className="flex-1 px-3 py-1.5 text-sm bg-green-500/20 text-green-400 rounded-lg hover:bg-green-500/30 transition-all duration-200"
-                  aria-label="Clear all monitored docks"
+                  onClick={() => setIsMonitorMode(false)}
+                  className={`flex-1 sm:flex-none px-3 py-1.5 text-sm rounded-lg transition-all duration-200 font-medium
+                    bg-red-600 hover:bg-red-700 text-white`}
+                  aria-pressed={isMonitorMode}
+                  aria-label="Exit monitor mode"
                 >
-                  Clear All
+                  Exit Monitor Mode
                 </button>
               ) : (
                 <button
-                  onClick={() => setMonitoredDockIds(new Set(docks.filter(d => d.location === activeTab).map(d => d.id)))}
-                  className="flex-1 px-3 py-1.5 text-sm bg-green-500/20 text-green-400 rounded-lg hover:bg-green-500/30 transition-all duration-200"
-                  aria-label="Monitor all docks in current terminal"
+                  onClick={() => setIsMonitorMode(true)}
+                  className={`flex-1 sm:flex-none px-3 py-1.5 text-sm rounded-lg transition-all duration-200 font-medium
+                    bg-cyan-500 hover:bg-cyan-600 text-white`}
+                  aria-pressed={isMonitorMode}
+                  aria-label="Enter monitor selection mode"
                 >
-                  Monitor All
+                  Select Monitor
                 </button>
               )}
-              <button
-                onClick={() => setIsMonitorMode(!isMonitorMode)}
-                className={`flex-1 px-3 py-1.5 text-sm rounded-lg transition-all duration-200 font-medium
-                  ${isMonitorMode 
-                    ? 'bg-green-600 hover:bg-green-700 text-white' 
-                    : 'bg-gray-600 hover:bg-gray-700 text-white'}`}
-                aria-pressed={isMonitorMode}
-                aria-label={`${isMonitorMode ? 'Exit' : 'Enter'} monitor mode`}
-              >
-                {isMonitorMode ? 'Exit Monitor' : 'Monitor'}
-              </button>
             </div>
           </div>
 
@@ -693,29 +885,24 @@ export default function DockTracker() {
             </div>
 
             <div className="flex items-center space-x-4">
-              {isMonitorMode ? (
-                <button
-                  onClick={() => setMonitoredDockIds(new Set())}
-                  className="px-4 py-2 bg-green-500/20 text-green-400 rounded-lg hover:bg-green-500/30 transition-all duration-200"
-                >
-                  Clear All
-                </button>
-              ) : (
-                <button
-                  onClick={() => setMonitoredDockIds(new Set(docks.filter(d => d.location === activeTab).map(d => d.id)))}
-                  className="px-4 py-2 bg-green-500/20 text-green-400 rounded-lg hover:bg-green-500/30 transition-all duration-200"
-                >
-                  Monitor All
-                </button>
-              )}
               <button
-                onClick={() => setIsMonitorMode(!isMonitorMode)}
+                onClick={() => {
+                  if (isMonitorMode) {
+                    // Exit monitor mode
+                    setIsMonitorMode(false);
+                  } else {
+                    // Enter monitor mode without clearing selections
+                    setIsMonitorMode(true);
+                  }
+                }}
                 className={`px-4 py-2 rounded-lg transition-all duration-200 font-medium
                   ${isMonitorMode 
-                    ? 'bg-green-600 hover:bg-green-700 text-white' 
-                    : 'bg-gray-600 hover:bg-gray-700 text-white'}`}
+                    ? 'bg-red-600 hover:bg-red-700' 
+                    : 'bg-cyan-500 hover:bg-cyan-600'} text-white`}
+                aria-pressed={isMonitorMode}
+                aria-label={isMonitorMode ? "Exit monitor mode" : "Enter monitor selection mode"}
               >
-                {isMonitorMode ? 'Exit Monitor' : 'Monitor'}
+                {isMonitorMode ? 'Exit Monitor' : 'Select Monitor'}
               </button>
               <button
                 onClick={toggleTheme}
@@ -849,7 +1036,10 @@ export default function DockTracker() {
             role="list"
           >
             {filteredDocks.map(dock => {
-              const statusTheme = THEME[theme].status[dock.status];
+              const effectiveStatus = getEffectiveStatus(dock, docks);
+              const statusTheme = THEME[theme].status[effectiveStatus];
+              const absorbedDocks = getAbsorbedDockNames(dock, docks);
+              
               return (
                 <div
                   key={dock.id}
@@ -859,57 +1049,68 @@ export default function DockTracker() {
                   <div className={`${statusTheme.bg} p-4 flex flex-col items-center space-y-2`}>
                     {/* Status Icon */}
                     <div className="transform-gpu">
-                      {getStatusIcon(dock.status, dock.id)}
+                      {getStatusIcon(effectiveStatus, dock.id)}
                     </div>
                     {/* Dock Name and Monitor Button */}
-                    <div className="flex items-center justify-between w-full">
-                      <span className={`font-medium ${statusTheme.text} text-lg`}>
-                        {dock.name}
-                      </span>
-                      {!isMonitorMode && (
-                        <button
-                          onClick={() => toggleDockMonitoring(dock.id)}
-                          className={`p-1.5 rounded-full transition-colors
-                            ${monitoredDockIds.has(dock.id) 
-                              ? THEME[theme].monitor.button
-                              : 'hover:bg-black/5 dark:hover:bg-white/5'}`}
-                          aria-label={`${monitoredDockIds.has(dock.id) ? 'Stop monitoring' : 'Start monitoring'} dock ${dock.name}`}
-                          aria-pressed={monitoredDockIds.has(dock.id)}
-                        >
-                          <Eye 
-                            className={`h-4 w-4 ${monitoredDockIds.has(dock.id) 
-                              ? THEME[theme].monitor.text 
-                              : THEME[theme].text.secondary}`} 
-                            aria-hidden="true"
-                          />
-                        </button>
+                    <div className="flex flex-col items-center w-full space-y-1">
+                      <div className="flex items-center justify-between w-full">
+                        <span className={`font-medium ${statusTheme.text} text-lg`}>
+                          {dock.name}
+                        </span>
+                        {!isMonitorMode && (
+                          <button
+                            onClick={() => toggleDockMonitoring(dock.id)}
+                            className={`p-1.5 rounded-full transition-colors
+                              ${getXDockGroup(dock.id, docks).some(id => monitoredDockIds.has(id))
+                                ? 'bg-cyan-500/20 hover:bg-cyan-500/30'
+                                : 'hover:bg-black/5 dark:hover:bg-white/5'}`}
+                            aria-label={`${monitoredDockIds.has(dock.id) ? 'Stop monitoring' : 'Start monitoring'} dock ${dock.name} group`}
+                            aria-pressed={getXDockGroup(dock.id, docks).some(id => monitoredDockIds.has(id))}
+                          >
+                            <Eye 
+                              className={`h-4 w-4 ${getXDockGroup(dock.id, docks).some(id => monitoredDockIds.has(id))
+                                ? 'text-cyan-500 dark:text-cyan-400'
+                                : THEME[theme].text.secondary}`} 
+                              aria-hidden="true"
+                            />
+                          </button>
+                        )}
+                      </div>
+                      {/* Show absorbed dock names if any */}
+                      {absorbedDocks.length > 0 && (
+                        <div className={`text-sm ${statusTheme.text} opacity-75 text-center`}>
+                          Includes: {absorbedDocks.join(', ')}
+                        </div>
                       )}
                     </div>
                   </div>
                   
-                  <div className="p-4">
-                    <label 
-                      htmlFor={`dock-status-${dock.id}`}
-                      className="sr-only"
-                    >
-                      Change status for dock {dock.name}
-                    </label>
-                    <select 
-                      id={`dock-status-${dock.id}`}
-                      value={dock.status}
-                      onChange={(e) => updateDockStatus(dock.id, e.target.value as DockStatus)}
-                      className={`w-full p-2 rounded
-                        ${THEME[theme].input.bg} 
-                        ${THEME[theme].input.border}
-                        ${THEME[theme].input.text}
-                        border transition-colors focus:ring-2 focus:ring-blue-500`}
-                    >
-                      <option value="available">Available</option>
-                      <option value="occupied">Occupied</option>
-                      <option value="out-of-service">Out of Service</option>
-                      <option value="deiced">Deiced</option>
-                    </select>
-                  </div>
+                  {/* Only show status selector for X docks or non-absorbed docks */}
+                  {(dock.name.includes('X') || !isDockAbsorbed(dock, docks)) && (
+                    <div className="p-4">
+                      <label 
+                        htmlFor={`dock-status-${dock.id}`}
+                        className="sr-only"
+                      >
+                        Change status for dock {dock.name}
+                      </label>
+                      <select 
+                        id={`dock-status-${dock.id}`}
+                        value={dock.status}
+                        onChange={(e) => updateDockStatus(dock.id, e.target.value as DockStatus)}
+                        className={`w-full p-2 rounded
+                          ${THEME[theme].input.bg} 
+                          ${THEME[theme].input.border}
+                          ${THEME[theme].input.text}
+                          border transition-colors focus:ring-2 focus:ring-blue-500`}
+                      >
+                        <option value="available">Available</option>
+                        <option value="occupied">Occupied</option>
+                        <option value="out-of-service">Out of Service</option>
+                        <option value="deiced">Deiced</option>
+                      </select>
+                    </div>
+                  )}
                 </div>
               );
             })}
@@ -920,10 +1121,26 @@ export default function DockTracker() {
   )
 }
 
-// Update the getDockName function to handle the new names
+// Update the getDockName function to handle the full range
 function getDockName(dock: Dock) {
   if (dock.location === 'southwest') {
-    return southwestDockNames[dock.number - 1] || `Unknown SW Dock ${dock.number}`
+    // Check if the dock number is within the valid range
+    if (dock.number >= 1 && dock.number <= southwestDockNames.length) {
+      return southwestDockNames[dock.number - 1];
+    }
+    return `Unknown SW Dock ${dock.number}`;
   }
-  return `Dock ${dock.number}`
+  
+  if (dock.location === 'southeast') {
+    const southeastDockNames = [
+      'Q99', 'Q98', 'Q97', 'Q96', 'Q95', 'Q94', 'Q93', 'Q92',
+      'Q91X', 'Q90', 'Q89', 'Q88X', 'Q87', 'Q86X'
+    ];
+    if (dock.number >= 1 && dock.number <= southeastDockNames.length) {
+      return southeastDockNames[dock.number - 1];
+    }
+    return `Unknown SE Dock ${dock.number}`;
+  }
+
+  return `Dock ${dock.number}`;
 }
